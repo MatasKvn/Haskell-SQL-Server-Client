@@ -21,8 +21,20 @@ type Database = [(TableName, DataFrame)]
 -- in provided Database list
 findTableByName :: Database -> String -> Maybe DataFrame
 findTableByName [] _ = Nothing
+findTableByName _ [] = Nothing
 findTableByName ((table, dataframe):xs) tableName = 
-    if table == tableName then Just dataframe else findTableByName xs tableName
+    if stringIsEqual table tableName then Just dataframe else findTableByName xs tableName
+
+stringIsEqual :: String -> String -> Bool
+stringIsEqual (x:xs) (y:ys) = if x == y || toUpper x == y || toLower x == y then stringIsEqual xs ys else False
+stringIsEqual [] _ = True
+stringIsEqual _ [] = False
+
+toUpper :: Char -> Char
+toUpper x = if x>='a' && x<='z' then (toEnum (fromEnum x - 32)) else x
+
+toLower :: Char -> Char
+toLower x = if x>='A' && x<='Z' then (toEnum (fromEnum x + 32)) else x
 
 -- 2) implement the function which parses a "select * from ..."
 -- sql statement and extracts a table name from the statement
