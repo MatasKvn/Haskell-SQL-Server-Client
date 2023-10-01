@@ -1,4 +1,9 @@
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use foldr" #-}
+{-# HLINT ignore "Redundant if" #-}
+{-# HLINT ignore "Redundant ==" #-}
+{-# HLINT ignore "Use if" #-}
 
 module Lib1
   ( parseSelectAllStatement,
@@ -9,7 +14,14 @@ module Lib1
 where
 
 import DataFrame (DataFrame (..), Row, Column (..), ColumnType (..), Value (..))
-import InMemoryTables (TableName)
+import InMemoryTables (TableName, database)
+import GHC.Windows (getErrorMessage)
+import Control.Arrow (ArrowChoice(left))
+import GHC.Conc (par)
+import Data.List
+import GHC.Unicode
+import Data.Char
+
 
 type ErrorMessage = String
 
@@ -30,16 +42,59 @@ stringIsEqual (x:xs) (y:ys) = if x == y || toUpper x == y || toLower x == y then
 stringIsEqual [] _ = True
 stringIsEqual _ [] = False
 
-toUpper :: Char -> Char
-toUpper x = if x>='a' && x<='z' then (toEnum (fromEnum x - 32)) else x
-
-toLower :: Char -> Char
-toLower x = if x>='A' && x<='Z' then (toEnum (fromEnum x + 32)) else x
-
 -- 2) implement the function which parses a "select * from ..."
 -- sql statement and extracts a table name from the statement
 parseSelectAllStatement :: String -> Either ErrorMessage TableName
-parseSelectAllStatement _ = error "parseSelectAllStatement not implemented"
+parseSelectAllStatement [] = Left "Empty input"
+parseSelectAllStatement input =
+  case splitBySpace input of
+    [a, b, c, d] ->
+      if parseSelect a == True && b == "*" && parseFrom c == True && last d == ';'
+        then 
+          let (tableName, _) = break (== ';') d in
+          Right tableName
+      else Left "Statement is incorrect"
+    _ -> Left "Format is incorrect"
+
+splitBySpace :: String -> [String]
+splitBySpace [] = []
+splitBySpace str =
+  let (word, rest) = break isSpace str
+      rest' = dropWhile isSpace rest  -- Remove leading spaces in 'rest'
+  in if null word
+       then splitBySpace rest'  -- Skip empty word
+       else word : splitBySpace rest'
+  where
+    isSpace c = c == ' '
+
+-- Parse differend words
+parseSelect :: String -> Bool
+parseSelect [] = False
+parseSelect a = 
+  if stringToLower a == "select"
+    then True
+  else False
+
+parseFrom :: String -> Bool
+parseFrom [] = False
+parseFrom a =
+  if stringToLower a == "from"
+    then True
+  else False
+
+stringToLower :: String -> String
+stringToLower [] = ""
+stringToLower (x:xs) = toLower x : stringToLower xs
+
+-- -- Unused function
+-- dbContainsTableName :: Database -> String -> Bool
+-- dbContainsTableName _ [] = False
+-- dbContainsTableName [] _ = False
+-- dbContainsTableName ((tableName, _):xs) str = 
+--   if tableName == str 
+--     then True
+--   else dbContainsTableName xs str
+
 
 -- 3) implement the function which validates tables: checks if
 -- columns match value types, if rows sizes match columns,..
