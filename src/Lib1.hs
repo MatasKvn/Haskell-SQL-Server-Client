@@ -98,8 +98,44 @@ stringToLower (x:xs) = toLower x : stringToLower xs
 
 -- 3) implement the function which validates tables: checks if
 -- columns match value types, if rows sizes match columns,..
+
 validateDataFrame :: DataFrame -> Either ErrorMessage ()
-validateDataFrame _ = error "validateDataFrame ot implemented"
+validateDataFrame (DataFrame columns rows) =
+    if sizeCheck columns rows
+        then 
+            if typeCheck columns rows
+            then Right ()
+            else Left "Row values don't match column value types"
+        else Left "Row sizes don't match columns"
+    where 
+
+        sizeCheck :: [Column] -> [Row] -> Bool
+        sizeCheck _ [] = True 
+        sizeCheck column (x:xs)= (length x == length column) && sizeCheck column xs
+
+        typeCheck :: [Column] -> [Row] -> Bool
+        typeCheck _ [] = True
+        typeCheck column (x:xs) = typeMatch column x && typeCheck column xs
+            where 
+                typeMatch ::[Column] -> [Value] -> Bool
+                typeMatch [] [] = True
+                typeMatch _ [] = False
+                typeMatch [] _ = False
+                typeMatch (c:cs) (v:vs) = typeMatchInner c v && typeMatch cs vs
+                    where 
+                        typeMatchInner :: Column -> Value -> Bool
+                        typeMatchInner (Column _ col) val = getType col == getValue val || getValue val == "Null"
+        
+getType :: ColumnType -> String
+getType IntegerType = "Integer"
+getType StringType  = "String"
+getType BoolType    = "Bool"
+
+getValue :: Value -> String
+getValue (IntegerValue _ )  = "Integer"
+getValue (StringValue _ )   = "String"
+getValue (BoolValue _ )     = "Bool"
+getValue  NullValue         = "Null"
 
 -- 4) implement the function which renders a given data frame
 -- as ascii-art table (use your imagination, there is no "correct"
