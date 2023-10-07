@@ -112,7 +112,6 @@ validateDataFrame (DataFrame columns rows) =
             else Left "Row values don't match column value types"
         else Left "Row sizes don't match columns"
     where
-
         sizeCheck :: [Column] -> [Row] -> Bool
         sizeCheck _ [] = True
         sizeCheck column (x:xs)= (length x == length column) && sizeCheck column xs
@@ -129,7 +128,7 @@ validateDataFrame (DataFrame columns rows) =
                     where
                         typeMatchInner :: Column -> Value -> Bool
                         typeMatchInner (Column _ col) val = getType col == getValue val || getValue val == "Null"
-
+                        
 getType :: ColumnType -> String
 getType IntegerType = "Integer"
 getType StringType  = "String"
