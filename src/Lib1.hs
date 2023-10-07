@@ -4,6 +4,7 @@
 {-# HLINT ignore "Redundant if" #-}
 {-# HLINT ignore "Redundant ==" #-}
 {-# HLINT ignore "Use if" #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 module Lib1
   ( parseSelectAllStatement,
@@ -21,6 +22,9 @@ import GHC.Conc (par)
 import Data.List
 import GHC.Unicode
 import Data.Char
+import Text.Printf
+import Text.ParserCombinators.ReadP (get)
+import Prelude
 
 
 type ErrorMessage = String
@@ -34,7 +38,7 @@ type Database = [(TableName, DataFrame)]
 findTableByName :: Database -> String -> Maybe DataFrame
 findTableByName [] _ = Nothing
 findTableByName _ [] = Nothing
-findTableByName ((table, dataframe):xs) tableName = 
+findTableByName ((table, dataframe):xs) tableName =
     if stringIsEqual table tableName then Just dataframe else findTableByName xs tableName
 
 stringIsEqual :: String -> String -> Bool
@@ -50,7 +54,7 @@ parseSelectAllStatement input =
   case splitBySpace input of
     [a, b, c, d] ->
       if parseSelect a == True && b == "*" && parseFrom c == True && last d == ';'
-        then 
+        then
           let (tableName, _) = break (== ';') d in
           Right tableName
       else Left "Statement is incorrect"
@@ -70,7 +74,7 @@ splitBySpace str =
 -- Parse differend words
 parseSelect :: String -> Bool
 parseSelect [] = False
-parseSelect a = 
+parseSelect a =
   if stringToLower a == "select"
     then True
   else False
@@ -102,30 +106,29 @@ stringToLower (x:xs) = toLower x : stringToLower xs
 validateDataFrame :: DataFrame -> Either ErrorMessage ()
 validateDataFrame (DataFrame columns rows) =
     if sizeCheck columns rows
-        then 
+        then
             if typeCheck columns rows
             then Right ()
             else Left "Row values don't match column value types"
         else Left "Row sizes don't match columns"
-    where 
-
+    where
         sizeCheck :: [Column] -> [Row] -> Bool
-        sizeCheck _ [] = True 
+        sizeCheck _ [] = True
         sizeCheck column (x:xs)= (length x == length column) && sizeCheck column xs
 
         typeCheck :: [Column] -> [Row] -> Bool
         typeCheck _ [] = True
         typeCheck column (x:xs) = typeMatch column x && typeCheck column xs
-            where 
+            where
                 typeMatch ::[Column] -> [Value] -> Bool
                 typeMatch [] [] = True
                 typeMatch _ [] = False
                 typeMatch [] _ = False
                 typeMatch (c:cs) (v:vs) = typeMatchInner c v && typeMatch cs vs
-                    where 
+                    where
                         typeMatchInner :: Column -> Value -> Bool
                         typeMatchInner (Column _ col) val = getType col == getValue val || getValue val == "Null"
-        
+                        
 getType :: ColumnType -> String
 getType IntegerType = "Integer"
 getType StringType  = "String"
@@ -141,5 +144,89 @@ getValue  NullValue         = "Null"
 -- as ascii-art table (use your imagination, there is no "correct"
 -- answer for this task!), it should respect terminal
 -- width (in chars, provided as the first argument)
-renderDataFrameAsTable :: Integer -> DataFrame -> String
-renderDataFrameAsTable _ _ = error "renderDataFrameAsTable not implemented"
+renderDataFrameAsTable :: Integer -> DataFrame -> String 
+renderDataFrameAsTable width (DataFrame collumns rows) = 
+  let 
+    lengths = getListOfLongestValues (DataFrame collumns rows) 
+  in
+  if(isWidthExceeded width lengths) then "Provided width is not enough for the table" else
+  concatenateRows rows (columnsNamesToString collumns lengths) lengths
+    where 
+      isWidthExceeded :: Integer -> [Integer] -> Bool
+      isWidthExceeded width colWidths = if(width < sumTableWidth colWidths) then True else False
+         where 
+           sumTableWidth :: [Integer] -> Integer
+           sumTableWidth [] = 1 -- 1 for the last '|'
+           sumTableWidth (x : xs) =  x + 1 + sumTableWidth xs -- +1 for '|' separators
+
+rowToString :: Row -> [Integer] -> String
+rowToString [] _ = "|"
+rowToString (x : xs) (y:ys) = "|"++ extractVarFromValue x ++ addSpaces(y - toInteger (extractLengthFromValue x)) ++ rowToString xs ys
+
+addSpaces :: Integer -> String
+addSpaces x = if x > 0 then ' ' : addSpaces (decrement x) else ""
+
+decrement :: Integer -> Integer
+decrement x = x - 1
+
+extractVarFromValue :: Value -> String
+extractVarFromValue (StringValue s) = s
+extractVarFromValue (IntegerValue i) = show i
+extractVarFromValue (BoolValue b) = show b
+extractVarFromValue (NullValue) = "null"
+
+concatenateRows :: [Row] -> String -> [Integer] -> String
+concatenateRows [] res _ = res
+concatenateRows (x:xs) res lengths = concatenateRows xs (res ++ "\n" ++ rowToString x lengths) lengths
+
+columnsNamesToString :: [Column] -> [Integer] -> String
+columnsNamesToString [] _ = "|"
+columnsNamesToString (x : xs) (y : ys) = "|" ++ columnToString x ++ addSpaces(y - toInteger (length (columnToString x))) ++ columnsNamesToString xs ys
+ where columnToString (Column name _) = name
+
+extractLengthFromValue :: Value -> Int
+extractLengthFromValue (StringValue s) = length s
+extractLengthFromValue (IntegerValue i) = length (show i)
+extractLengthFromValue (BoolValue b) = length (show b)
+extractLengthFromValue (NullValue) = length "Null"
+
+getNthElements :: Int -> [[a]] -> [a]
+getNthElements n lists = map (\list -> list !! n) lists
+
+
+-- Monster function xddddddddddddd
+getListOfLongestValues :: DataFrame -> [Integer]
+getListOfLongestValues (DataFrame columns rows) = longestValue columns rows 0
+  where
+    longestValue :: [Column] -> [Row] -> Int -> [Integer]
+    longestValue [] [] index = []
+    longestValue columns rows index =
+      if index >= length columns then [] 
+      else
+      -- indexMaxLength : (longestValue columns rows index+1)
+      getMaxLengthInColumn columns rows index : longestValue columns rows (increment index)
+        where 
+          -- Finds max length in each column
+          getMaxLengthInColumn :: [Column] -> [Row] -> Int -> Integer
+          getMaxLengthInColumn columns rows index =
+            isColOrRowsLonger (columns !! index) (maxValueLength (getNthElements index rows))
+              where
+                isColOrRowsLonger :: Column -> Integer -> Integer
+                isColOrRowsLonger column x = max x (getColumnNameLength column)
+
+increment :: Int -> Int
+increment x = x + 1
+
+getColumnNameLength :: Column -> Integer
+getColumnNameLength (Column name _) = toInteger (length name)
+
+maxValueLength :: [Value] -> Integer
+maxValueLength values = maxV values 0
+  where
+  maxV :: [Value] -> Int -> Integer
+  maxV [] currentMax = toInteger currentMax
+  maxV (x : xs) currentMax =
+      let currentVal = extractLengthFromValue x in
+      if currentMax > currentVal
+       then maxV xs currentMax
+      else maxV xs currentVal
