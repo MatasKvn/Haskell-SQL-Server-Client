@@ -19,11 +19,7 @@ import InMemoryTables (TableName, database)
 -- import GHC.Windows (getErrorMessage)
 import Control.Arrow (ArrowChoice(left))
 import GHC.Conc (par)
-import Data.List
 import GHC.Unicode
-import Data.Char
-import Text.Printf
-import Text.ParserCombinators.ReadP (get)
 import Prelude
 
 
