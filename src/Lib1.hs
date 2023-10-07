@@ -16,7 +16,7 @@ where
 
 import DataFrame (DataFrame (..), Row, Column (..), ColumnType (..), Value (..))
 import InMemoryTables (TableName, database)
-import GHC.Windows (getErrorMessage)
+-- import GHC.Windows (getErrorMessage)
 import Control.Arrow (ArrowChoice(left))
 import GHC.Conc (par)
 import Data.List
