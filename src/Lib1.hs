@@ -145,7 +145,7 @@ renderDataFrameAsTable width (DataFrame collumns rows) =
   let 
     lengths = getListOfLongestValues (DataFrame collumns rows) 
   in
-  if(isWidthExceeded width lengths) then "Provided width is not enough for the table" else
+  -- if(isWidthExceeded width lengths) then "Provided width is not enough for the table" else -- Stops tables that are too big from being printed
   concatenateRows rows (columnsNamesToString collumns lengths) lengths
     where 
       isWidthExceeded :: Integer -> [Integer] -> Bool
