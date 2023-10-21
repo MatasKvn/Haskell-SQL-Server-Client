@@ -23,7 +23,23 @@ type ErrorMessage = String
 type Database = [(TableName, DataFrame)]
 
 -- Keep the type, modify constructors
-data ParsedStatement = ParsedStatement
+data ParsedStatement
+  = ColumnList [String] TableName -- 
+  | MinAggregation String TableName -- 
+  | SumAggregation String TableName --
+  | WhereOrCondition [Condition] TableName --
+  deriving (Show, Eq)
+
+data Condition
+  = Equals Int Int
+  | NotEqual Int Int
+  | LessThan Int Int
+  | GreaterThan Int Int
+  | LessThanOrEqual Int Int
+  | GreaterThanOrEqual Int Int
+  deriving (Show, Eq)
+
+
 
 -- Parses user input into an entity representing a parsed
 -- statement
@@ -34,6 +50,9 @@ parseStatement _ = Left "Not implemented: parseStatement"
 -- InMemoryTables.databases a source of data.
 executeStatement :: ParsedStatement -> Either ErrorMessage DataFrame
 executeStatement _ = Left "Not implemented: executeStatement"
+
+
+
 
 
 -- SHOW TABLES (Lists avaivable tables in database)
@@ -53,7 +72,6 @@ showTableByName db tableName =
       let (DataFrame columns rows) = (\(Just x)-> x)  maybeDFrame in
         Just columns
 
-
 -- Doesn't work bad data( NO ERROR HANDLING )
 getColumnFromTable :: String -> DataFrame -> DataFrame
 getColumnFromTable columnName dFrame =
@@ -66,6 +84,10 @@ getColumnFromTable columnName dFrame =
     DataFrame cols colValues2dArray
   where
     arrayTo2D arr = map (\a -> [a]) arr
+
+
+
+
 
 -- Returns a single Column(in a list) that matches the given String in the DataFrame
 getColumnByName :: String -> DataFrame -> [Column]
