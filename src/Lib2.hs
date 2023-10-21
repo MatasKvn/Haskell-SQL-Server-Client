@@ -43,6 +43,16 @@ showTables ((tName, dFrame) : xs) =
   tName : showTables xs 
   
 -- SHOW TABLE 'name' (Lists columns avaivable in the table 'name')
+showTableByName :: Database -> String -> Maybe [Column]
+showTableByName db tableName =
+  let 
+    maybeDFrame = getTable db tableName
+  in
+    if(maybeDFrame == Nothing) then Nothing
+    else 
+      let (DataFrame columns rows) = (\(Just x)-> x)  maybeDFrame in
+        Just columns
+
 
 -- Doesn't work bad data( NO ERROR HANDLING )
 getColumnFromTable :: String -> DataFrame -> DataFrame
