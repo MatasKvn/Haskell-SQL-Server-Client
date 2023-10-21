@@ -36,6 +36,15 @@ executeStatement :: ParsedStatement -> Either ErrorMessage DataFrame
 executeStatement _ = Left "Not implemented: executeStatement"
 
 
+-- SHOW TABLES (Lists avaivable tables in database)
+showTables :: Database -> String
+showTables [] = []
+showTables ((tName, dFrame) : xs) =
+  case length xs of 
+    0 -> tName
+    _ -> tName ++ ", " ++ showTables xs 
+  
+-- SHOW TABLE 'name' (Lists columns avaivable in the table 'name')
 
 -- Doesn't work bad data( NO ERROR HANDLING )
 getColumnFromTable :: String -> DataFrame -> DataFrame
