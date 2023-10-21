@@ -37,12 +37,10 @@ executeStatement _ = Left "Not implemented: executeStatement"
 
 
 -- SHOW TABLES (Lists avaivable tables in database)
-showTables :: Database -> String
+showTables :: Database -> [String]
 showTables [] = []
 showTables ((tName, dFrame) : xs) =
-  case length xs of 
-    0 -> tName
-    _ -> tName ++ ", " ++ showTables xs 
+  tName : showTables xs 
   
 -- SHOW TABLE 'name' (Lists columns avaivable in the table 'name')
 
