@@ -65,20 +65,26 @@ showTables = showTables_ database
     showTables_ ((tName, dFrame) : xs) =
       tName : showTables_ xs 
   
--- FIX:
--- return [String] instead of [Column]
--- not require entering database
---
+
 -- SHOW TABLE 'name' (Lists columns avaivable in the table 'name')
-showTableByName :: Database -> String -> Maybe [Column]
-showTableByName db tableName =
-  let 
-    maybeDFrame = getTable db tableName
-  in
-    if(maybeDFrame == Nothing) then Nothing
-    else 
-      let (DataFrame columns rows) = (\(Just x)-> x)  maybeDFrame in
-        Just columns
+showTableByName :: String -> Either ErrorMessage [String]
+showTableByName tName = showTableByName_ database tName
+  where
+    showTableByName_ :: Database -> String -> Either ErrorMessage [String]
+    showTableByName_ db tableName =
+      let 
+        maybeDFrame = getTable db tableName
+      in
+        if (maybeDFrame == Nothing) then Left ("Table with name: '" ++ tableName ++ "' does not exist.")
+        else 
+          let (DataFrame columns rows) = fromJust maybeDFrame in
+          Right (getColumnsNames columns)
+    getColumnsNames :: [Column] -> [String]
+    getColumnsNames [] = []
+    getColumnsNames ((Column cName cType) : xs) =
+      cName : getColumnsNames xs  
+
+
 
 
 
