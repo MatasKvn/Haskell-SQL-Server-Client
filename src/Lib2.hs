@@ -12,7 +12,7 @@ import DataFrame (DataFrame)
 import InMemoryTables (TableName)
 
 -- Imports whole modules for usage in GHCI
-import DataFrame (DataFrame (DataFrame), Column (Column), ColumnType (IntegerType, BoolType), Value (IntegerValue))
+import DataFrame (DataFrame (DataFrame), Column (Column), ColumnType (IntegerType, BoolType), Value (IntegerValue), Row)
 import InMemoryTables (TableName)
 import DataFrame
 import InMemoryTables
@@ -84,6 +84,20 @@ getColumnFromTable columnName dFrame =
     DataFrame cols colValues2dArray
   where
     arrayTo2D arr = map (\a -> [a]) arr
+
+-- Merges the given DataFrames
+mergeDataFrames :: DataFrame -> DataFrame -> DataFrame
+mergeDataFrames dFrame_1 dFrame_2 = 
+  let
+    (DataFrame cols1 rows1) = dFrame_1
+    (DataFrame cols2 rows2) = dFrame_2
+  in
+  DataFrame (cols1 ++ cols2) (mergeRows rows1 rows2)
+    where
+      mergeRows :: [Row] -> [Row] -> [Row]
+      mergeRows a [] = a
+      mergeRows (x : xs) (y : ys) =
+       (x ++ y) : (mergeRows xs ys)
 
 
 
