@@ -55,14 +55,15 @@ executeStatement _ = Left "Not implemented: executeStatement"
 
 
 
--- FIX:
--- not require entering database
---
+
 -- SHOW TABLES (Lists avaivable tables in database)
-showTables :: Database -> [String]
-showTables [] = []
-showTables ((tName, dFrame) : xs) =
-  tName : showTables xs 
+showTables :: [String]
+showTables = showTables_ database
+  where
+    showTables_ :: Database -> [String]
+    showTables_ [] = []
+    showTables_ ((tName, dFrame) : xs) =
+      tName : showTables_ xs 
   
 -- FIX:
 -- return [String] instead of [Column]
