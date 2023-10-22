@@ -13,10 +13,11 @@ import InMemoryTables (TableName)
 
 -- Imports whole modules for usage in GHCI
 import DataFrame (DataFrame (DataFrame), Column (Column), ColumnType (IntegerType, BoolType), Value (IntegerValue), Row)
-import InMemoryTables (TableName)
+import InMemoryTables (TableName, database)
 import DataFrame
 import InMemoryTables
 import Lib1
+import Data.Maybe (isNothing, fromJust)
 
 
 type ErrorMessage = String
@@ -54,13 +55,19 @@ executeStatement _ = Left "Not implemented: executeStatement"
 
 
 
-
+-- FIX:
+-- not require entering database
+--
 -- SHOW TABLES (Lists avaivable tables in database)
 showTables :: Database -> [String]
 showTables [] = []
 showTables ((tName, dFrame) : xs) =
   tName : showTables xs 
   
+-- FIX:
+-- return [String] instead of [Column]
+-- not require entering database
+--
 -- SHOW TABLE 'name' (Lists columns avaivable in the table 'name')
 showTableByName :: Database -> String -> Maybe [Column]
 showTableByName db tableName =
@@ -72,19 +79,54 @@ showTableByName db tableName =
       let (DataFrame columns rows) = (\(Just x)-> x)  maybeDFrame in
         Just columns
 
+
+
+
+-- COLUMN LIST
+--
+-- Selects given [Column] from a given Table
+columnList :: [String] -> TableName -> Either ErrorMessage DataFrame
+columnList columnNames tName =
+  let dFrame = getTable database tName in
+  if (dFrame == Nothing) then Left ("Table with name: '" ++ tName ++ "' does not exist.")
+  else 
+    let dFrame_ = fromJust dFrame in
+    columnListDF columnNames dFrame_
+
+-- Selects given [Column] from the given DataFrame
+columnListDF :: [String] -> DataFrame -> Either ErrorMessage DataFrame
+columnListDF columnNames dFrame = 
+    let cols = getColsFromDataFrame columnNames dFrame in
+    if(cols == Nothing) then Left ("Some column names are incorrect.")
+    else 
+      let cols_ = fromJust cols in
+      Right (mergeListOfDataFrames cols_)
+
+-- Returns a list of DataFrames that each represent each column of the given DataFrame
+getColsFromDataFrame :: [String] -> DataFrame -> Maybe [DataFrame]
+getColsFromDataFrame [] _ = Just []
+getColsFromDataFrame (x : xs) dFrame = do
+  current <- getColumnFromTable x dFrame
+  rest <- getColsFromDataFrame xs dFrame
+  return (current : rest)
+
 -- Doesn't work bad data( NO ERROR HANDLING )
-getColumnFromTable :: String -> DataFrame -> DataFrame
+getColumnFromTable :: String -> DataFrame -> Maybe DataFrame
 getColumnFromTable columnName dFrame =
   let
-    cols = getColumnByName columnName dFrame
-    col = head cols
-    colValues = getColValues col dFrame
-    colValues2dArray = arrayTo2D colValues
+    cols = getColumnByName columnName dFrame 
   in
-    DataFrame cols colValues2dArray
+    if (null cols) then Nothing
+    else
+      let
+        col = head cols
+        colValues = getColValues col dFrame
+        colValues2dArray = arrayTo2D colValues
+      in
+        Just (DataFrame cols colValues2dArray)
   where
     arrayTo2D arr = map (\a -> [a]) arr
-
+    
 -- Merges the given DataFrames
 mergeDataFrames :: DataFrame -> DataFrame -> DataFrame
 mergeDataFrames dFrame_1 dFrame_2 = 
@@ -99,8 +141,13 @@ mergeDataFrames dFrame_1 dFrame_2 =
       mergeRows (x : xs) (y : ys) =
        (x ++ y) : (mergeRows xs ys)
 
-
-
+-- Merges a list of given DataFrames
+mergeListOfDataFrames :: [DataFrame] -> DataFrame
+mergeListOfDataFrames [] = DataFrame [] []
+mergeListOfDataFrames (x : xs) =
+  if null xs then x
+  else
+    mergeDataFrames x (mergeListOfDataFrames xs)
 
 
 -- Returns a single Column(in a list) that matches the given String in the DataFrame
@@ -125,7 +172,6 @@ getColValues colName (DataFrame cols rows) =
   where
     getNthElements :: Int -> [[a]] -> [a]
     getNthElements index lists = map (\list -> list !! index) lists
-
 
 getIndex :: Eq a => a -> [a] -> Int -> Maybe Int
 getIndex _ [] _ = Nothing
