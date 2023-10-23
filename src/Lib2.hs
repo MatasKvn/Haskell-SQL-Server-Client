@@ -11,13 +11,14 @@ where
 import DataFrame (DataFrame)
 import InMemoryTables (TableName)
 
--- Imports whole modules for usage in GHCI
+-- Imports 
 import DataFrame (DataFrame (DataFrame), Column (Column), ColumnType (IntegerType, BoolType), Value (IntegerValue), Row)
 import InMemoryTables (TableName, database)
 import DataFrame
 import InMemoryTables
 import Lib1
 import Data.Maybe (isNothing, fromJust)
+import Data.Either (fromRight, fromLeft)
 
 
 type ErrorMessage = String
@@ -29,6 +30,9 @@ data ParsedStatement
   | MinAggregation String TableName -- 
   | SumAggregation String TableName --
   | WhereOrCondition [Condition] TableName --
+
+  | ShowTables 
+  | ShowTableName TableName
   deriving (Show, Eq)
 
 data Condition
@@ -45,7 +49,24 @@ data Condition
 -- Parses user input into an entity representing a parsed
 -- statement
 parseStatement :: String -> Either ErrorMessage ParsedStatement
-parseStatement _ = Left "Not implemented: parseStatement"
+parseStatement input =
+  let
+    words = splitBySpace input
+  in 
+    Left "Not implemented: parseStatement"
+
+
+splitBySpace :: String -> [String]
+splitBySpace [] = []
+splitBySpace input = 
+  let 
+    (word, rest) = break (== ' ') input
+    rest_ = dropWhile (== ' ') rest
+  in
+    word : splitBySpace rest_
+
+
+
 
 -- Executes a parsed statemet. Produces a DataFrame. Uses
 -- InMemoryTables.databases a source of data.
