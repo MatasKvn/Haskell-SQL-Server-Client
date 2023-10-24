@@ -54,6 +54,7 @@ capitalize = map toUpper
 parseStatement :: String -> Either ErrorMessage ParsedStatement
 parseStatement input =
   let 
+    -- Remove everything after the semicolon and split each word into "words"
     (statement, semicolon) = break (==';') input
     words = splitBySpace statement
   in 
@@ -66,6 +67,22 @@ parseStatement input =
     -- SHOW TABLE "name"
     else if (length words) == 3 && (capitalize(words!!0 ++ words!!1)) == "SHOWTABLE"
       then Right (ShowTableName (words!!2))
+    -- SELECT
+    else if (length words) >= 4 && capitalize(words!!0) == "SELECT"
+      then 
+        let 
+          noSelectWord = tail words 
+          (select, _from) = break (\ x -> (capitalize x) == "FROM") noSelectWord
+        in
+        if (null _from) || (length _from) == 1 then Left "Incorrect SELECT statement format."
+        else
+          let
+            from = tail _from
+            tName = head from -- takes the first tableName in the FROM
+          in
+          if (length from > 1) then Left "Selecting from multiple tables is not allowed."
+          else
+            Right (ColumnList select tName)
     else
       Left "Not implemented: parseStatement"
 
@@ -85,8 +102,9 @@ splitBySpace input =
 -- Executes a parsed statemet. Produces a DataFrame. Uses
 -- InMemoryTables.databases a source of data.
 executeStatement :: ParsedStatement -> Either ErrorMessage DataFrame
-executeStatement (ShowTables) = Right (showTables)
-executeStatement (ShowTableName tName) = (showTableByName tName)
+executeStatement (ShowTables) = Right showTables
+executeStatement (ShowTableName tName) = showTableByName tName
+executeStatement (ColumnList columns tName) = columnList columns tName
 executeStatement _ = Left "Not implemented: executeStatement"
 
 
@@ -153,17 +171,19 @@ getColsFromDataFrame (x : xs) dFrame = do
 -- Doesn't work bad data( NO ERROR HANDLING )
 getColumnFromTable :: String -> DataFrame -> Maybe DataFrame
 getColumnFromTable columnName dFrame =
-  let
-    cols = getColumnByName columnName dFrame 
-  in
-    if (null cols) then Nothing
+  if(columnName == "*") then Just dFrame
     else
-      let
-        col = head cols
-        colValues = getColValues col dFrame
-        colValues2dArray = arrayTo2D colValues
-      in
-        Just (DataFrame cols colValues2dArray)
+    let
+      cols = getColumnByName columnName dFrame 
+    in
+      if (null cols) then Nothing
+      else
+        let
+          col = head cols
+          colValues = getColValues col dFrame
+          colValues2dArray = arrayTo2D colValues
+        in
+          Just (DataFrame cols colValues2dArray)
   where
     arrayTo2D arr = map (\a -> [a]) arr
     
