@@ -68,7 +68,7 @@ parseStatement input =
     else if (length words) == 3 && (capitalize(words!!0 ++ words!!1)) == "SHOWTABLE"
       then Right (ShowTableName (words!!2))
     -- SELECT
-    else if (length words) >= 4 && capitalize(words!!0) == "SELECT"
+    else if (length words) >= 3 && capitalize(words!!0) == "SELECT"
       then 
         let 
           noSelectWord = tail words 
