@@ -12,13 +12,14 @@ import DataFrame (DataFrame)
 import InMemoryTables (TableName)
 
 -- Imports 
-import DataFrame (DataFrame (DataFrame), Column (Column), ColumnType (IntegerType, BoolType), Value (IntegerValue), Row)
+import DataFrame (DataFrame (DataFrame), Column (Column), ColumnType (IntegerType, BoolType, StringType), Value (IntegerValue), Row)
 import InMemoryTables (TableName, database)
 import DataFrame
 import InMemoryTables
 import Lib1
 import Data.Maybe (isNothing, fromJust)
 import Data.Either (fromRight, fromLeft)
+import Data.Char
 
 
 type ErrorMessage = String
@@ -44,16 +45,29 @@ data Condition
   | GreaterThanOrEqual Int Int
   deriving (Show, Eq)
 
+capitalize :: String -> String
+capitalize = map toUpper
 
 
 -- Parses user input into an entity representing a parsed
 -- statement
 parseStatement :: String -> Either ErrorMessage ParsedStatement
 parseStatement input =
-  let
-    words = splitBySpace input
+  let 
+    (statement, semicolon) = break (==';') input
+    words = splitBySpace statement
   in 
-    Left "Not implemented: parseStatement"
+  -- Check if statement is ended by ';'
+  if (null semicolon) then Left "Missing statement end symbol: ';'."
+  else 
+    -- SHOW TABLES
+    if (length words) == 2 && (capitalize(words!!0 ++ words!!1)) == "SHOWTABLES"
+      then Right ShowTables
+    -- SHOW TABLE "name"
+    else if (length words) == 3 && (capitalize(words!!0 ++ words!!1)) == "SHOWTABLE"
+      then Right (ShowTableName (words!!2))
+    else
+      Left "Not implemented: parseStatement"
 
 
 splitBySpace :: String -> [String]
@@ -71,6 +85,8 @@ splitBySpace input =
 -- Executes a parsed statemet. Produces a DataFrame. Uses
 -- InMemoryTables.databases a source of data.
 executeStatement :: ParsedStatement -> Either ErrorMessage DataFrame
+executeStatement (ShowTables) = Right (showTables)
+executeStatement (ShowTableName tName) = (showTableByName tName)
 executeStatement _ = Left "Not implemented: executeStatement"
 
 
@@ -78,8 +94,8 @@ executeStatement _ = Left "Not implemented: executeStatement"
 
 
 -- SHOW TABLES (Lists avaivable tables in database)
-showTables :: [String]
-showTables = showTables_ database
+showTables :: DataFrame
+showTables = DataFrame (map (\x -> Column x StringType) (showTables_ database)) []
   where
     showTables_ :: Database -> [String]
     showTables_ [] = []
@@ -88,10 +104,10 @@ showTables = showTables_ database
   
 
 -- SHOW TABLE 'name' (Lists columns avaivable in the table 'name')
-showTableByName :: String -> Either ErrorMessage [String]
+showTableByName :: String -> Either ErrorMessage DataFrame
 showTableByName tName = showTableByName_ database tName
   where
-    showTableByName_ :: Database -> String -> Either ErrorMessage [String]
+    showTableByName_ :: Database -> String -> Either ErrorMessage DataFrame
     showTableByName_ db tableName =
       let 
         maybeDFrame = getTable db tableName
@@ -99,11 +115,7 @@ showTableByName tName = showTableByName_ database tName
         if (maybeDFrame == Nothing) then Left ("Table with name: '" ++ tableName ++ "' does not exist.")
         else 
           let (DataFrame columns rows) = fromJust maybeDFrame in
-          Right (getColumnsNames columns)
-    getColumnsNames :: [Column] -> [String]
-    getColumnsNames [] = []
-    getColumnsNames ((Column cName cType) : xs) =
-      cName : getColumnsNames xs  
+          Right (DataFrame columns []) 
 
 
 
