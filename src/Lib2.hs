@@ -44,7 +44,7 @@ type IntCondition = String
 parseStatement :: String -> Either ErrorMessage ParsedStatement
 parseStatement input =
   let
-    -- Remove everything after the semicolon and split each word into "words"
+    -- Remove everything after the semicolon and split everything by 'SPACE' in words
     (statement, semicolon) = break (==';') input
     words = splitBySpace statement
   in
@@ -61,18 +61,20 @@ parseStatement input =
     else if (length words) >= 3 && capitalize (words!!0) == "SELECT"
       then
         let
-          noSelectWord = tail words
-          (select, _from) = break (\ x -> (capitalize x) == "FROM") noSelectWord
+          noSelectWord = tail words -- remove 'SELECT' keyword
+          (select, _from) = break (\ x -> (capitalize x) == "FROM") noSelectWord -- separate 'SELECT' and 'FROM'
         in
         if (null _from) || (length _from) == 1 then Left "Incorrect SELECT statement format."
         else
         let
-          from' = tail _from
-          (from, _wher) = break (\ x -> (capitalize x) == "WHERE") from'
-          tName = head from -- takes the first tableName in the FROM
+          from' = tail _from -- remove 'FROM' keyword
+          (from, _wher) = break (\ x -> (capitalize x) == "WHERE") from' -- separate 'FROM' and 'WHERE'
+          tName = head from -- take first occuring TableName
         in
+        -- multiple 'FROM's 
         if (null _wher && length from > 1)
           then Left "Selecting from multiple tables is not allowed."
+        -- if no 'WHERE' keyword
         else if (null _wher)
           then
             -- MIN
@@ -84,13 +86,14 @@ parseStatement input =
               then Right $ SumAggregation (extractArgumentFromAggregateFunc $ select!!0) tName
             -- COLUMN LIST
             else Right (ColumnList select tName)
+        -- if WHERE 'keyword'
         else if (length _wher <= 1)
           then Left "Missing argumnets in the 'WHERE' clause."
         else if (length _wher > 1) -- For readability
           then
             let
-              wher_ors = tail _wher
-              wher = removeORs wher_ors
+              wher_ors = tail _wher -- conditions with ORs
+              wher = removeORs wher_ors -- list of conditions
             in
             -- WHERE OR CONDITION
             if (null wher || last wher == "OR") then Left "Error in 'WHERE' clause."
@@ -101,27 +104,22 @@ parseStatement input =
       Left "Not implemented: parseStatement"
 
 
--- removeORs :: [String] -> [String]
--- removeORs [] = []
--- removeORs ["OR"] = ["OR"]
--- removeORs (x : xs) =
---   if(capitalize x == "OR") then removeORs xs
---   else x : removeORs xs
-
 removeORs :: [String] -> [String]
 removeORs [] = []
 removeORs input
+  | length input >= 1 && capitalize (head input) == "OR" = []
+  | length input >= 1 && capitalize (last input) == "OR" = []
   | length input >= 2 = 
     let
       (x : xs) = input
       (y : ys) = xs
     in
-    if(capitalize y == "OR")
+    if (capitalize y == "OR")
       then
         x : removeORs ys
-    else
-      []
-  | length input == 1 && capitalize (head input) == "OR" = []
+    else if (capitalize x /= "OR" && capitalize y /= "OR")
+      then ["OR"]
+    else  ["OR"]
   | otherwise = input
 
 
