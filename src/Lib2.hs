@@ -27,70 +27,127 @@ type Database = [(TableName, DataFrame)]
 
 -- Keep the type, modify constructors
 data ParsedStatement
-  = ColumnList [String] TableName -- 
-  | MinAggregation String TableName -- 
-  | SumAggregation String TableName --
-  | WhereOrCondition [Condition] TableName --
+  = ColumnList [String] TableName -- Columns TableName
+  | MinAggregation String TableName -- Column TableName
+  | SumAggregation String TableName -- Column TableName
+  | WhereOrCondition [String] [IntCondition] TableName -- Columns Conditions TableName
 
-  | ShowTables 
+  | ShowTables
   | ShowTableName TableName
   deriving (Show, Eq)
 
-data Condition
-  = Equals Int Int
-  | NotEqual Int Int
-  | LessThan Int Int
-  | GreaterThan Int Int
-  | LessThanOrEqual Int Int
-  | GreaterThanOrEqual Int Int
-  deriving (Show, Eq)
-
-capitalize :: String -> String
-capitalize = map toUpper
+type IntCondition = String
 
 
 -- Parses user input into an entity representing a parsed
 -- statement
 parseStatement :: String -> Either ErrorMessage ParsedStatement
 parseStatement input =
-  let 
+  let
     -- Remove everything after the semicolon and split each word into "words"
     (statement, semicolon) = break (==';') input
     words = splitBySpace statement
-  in 
+  in
   -- Check if statement is ended by ';'
   if (null semicolon) then Left "Missing statement end symbol: ';'."
-  else 
+  else
     -- SHOW TABLES
     if (length words) == 2 && (capitalize(words!!0 ++ words!!1)) == "SHOWTABLES"
       then Right ShowTables
     -- SHOW TABLE "name"
-    else if (length words) == 3 && (capitalize(words!!0 ++ words!!1)) == "SHOWTABLE"
+    else if (length words) == 3 && (capitalize (words!!0 ++ words!!1)) == "SHOWTABLE"
       then Right (ShowTableName (words!!2))
     -- SELECT
-    else if (length words) >= 3 && capitalize(words!!0) == "SELECT"
-      then 
-        let 
-          noSelectWord = tail words 
+    else if (length words) >= 3 && capitalize (words!!0) == "SELECT"
+      then
+        let
+          noSelectWord = tail words
           (select, _from) = break (\ x -> (capitalize x) == "FROM") noSelectWord
         in
         if (null _from) || (length _from) == 1 then Left "Incorrect SELECT statement format."
         else
-          let
-            from = tail _from
-            tName = head from -- takes the first tableName in the FROM
-          in
-          if (length from > 1) then Left "Selecting from multiple tables is not allowed."
-          else
-            Right (ColumnList select tName)
+        let
+          from' = tail _from
+          (from, _wher) = break (\ x -> (capitalize x) == "WHERE") from'
+          tName = head from -- takes the first tableName in the FROM
+        in
+        if (null _wher && length from > 1)
+          then Left "Selecting from multiple tables is not allowed."
+        else if (null _wher)
+          then
+            -- MIN
+            if length select == 1 && isAggregateFunc (select!!0) "MIN"
+              then Right $ MinAggregation (extractArgumentFromAggregateFunc $ select!!0) tName
+            else
+            -- SUM
+            if length select == 1 && isAggregateFunc (select!!0) "SUM"
+              then Right $ SumAggregation (extractArgumentFromAggregateFunc $ select!!0) tName
+            -- COLUMN LIST
+            else Right (ColumnList select tName)
+        else if (length _wher <= 1)
+          then Left "Missing argumnets in the 'WHERE' clause."
+        else if (length _wher > 1) -- For readability
+          then
+            let
+              wher_ors = tail _wher
+              wher = removeORs wher_ors
+            in
+            -- WHERE OR CONDITION
+            if (null wher || last wher == "OR") then Left "Error in 'WHERE' clause."
+            else Right $ WhereOrCondition (select) (wher) (tName)
+
+        else Left "Not reachable"
     else
       Left "Not implemented: parseStatement"
 
 
+-- removeORs :: [String] -> [String]
+-- removeORs [] = []
+-- removeORs ["OR"] = ["OR"]
+-- removeORs (x : xs) =
+--   if(capitalize x == "OR") then removeORs xs
+--   else x : removeORs xs
+
+removeORs :: [String] -> [String]
+removeORs [] = []
+removeORs input
+  | length input >= 2 = 
+    let
+      (x : xs) = input
+      (y : ys) = xs
+    in
+    if(capitalize y == "OR")
+      then
+        x : removeORs ys
+    else
+      []
+  | length input == 1 && capitalize (head input) == "OR" = []
+  | otherwise = input
+
+
+
+
+
+isAggregateFunc :: String -> String -> Bool
+isAggregateFunc input functionName = capitalize (take 4 input) == capitalize (functionName++"(") && last input == ')'
+
+extractArgumentFromAggregateFunc :: String -> String
+extractArgumentFromAggregateFunc input =
+  let
+    (a, b) = break (== ')') input
+    (_, a1) = break (== '(') a
+    a2 = tail a1
+  in
+    if b == ")" then a2;
+    else ""
+
+capitalize :: String -> String
+capitalize = map toUpper
+
 splitBySpace :: String -> [String]
 splitBySpace [] = []
-splitBySpace input = 
-  let 
+splitBySpace input =
+  let
     (word, rest) = break (== ' ') input
     rest_ = dropWhile (== ' ') rest
   in
@@ -104,7 +161,11 @@ splitBySpace input =
 executeStatement :: ParsedStatement -> Either ErrorMessage DataFrame
 executeStatement (ShowTables) = Right showTables
 executeStatement (ShowTableName tName) = showTableByName tName
+
 executeStatement (ColumnList columns tName) = columnList columns tName
+executeStatement (MinAggregation argument tName) = Left "Execution of MIN() not yet implemented."
+executeStatement (SumAggregation argument tName) = Left "Execution of SUM() not yet implemented."
+executeStatement (WhereOrCondition columns conditions tName) = Left "Execution of WHERE OR not yet implemented"
 executeStatement _ = Left "Not implemented: executeStatement"
 
 
@@ -118,8 +179,8 @@ showTables = DataFrame (map (\x -> Column x StringType) (showTables_ database)) 
     showTables_ :: Database -> [String]
     showTables_ [] = []
     showTables_ ((tName, dFrame) : xs) =
-      tName : showTables_ xs 
-  
+      tName : showTables_ xs
+
 
 -- SHOW TABLE 'name' (Lists columns avaivable in the table 'name')
 showTableByName :: String -> Either ErrorMessage DataFrame
@@ -127,13 +188,13 @@ showTableByName tName = showTableByName_ database tName
   where
     showTableByName_ :: Database -> String -> Either ErrorMessage DataFrame
     showTableByName_ db tableName =
-      let 
+      let
         maybeDFrame = getTable db tableName
       in
         if (maybeDFrame == Nothing) then Left ("Table with name: '" ++ tableName ++ "' does not exist.")
-        else 
+        else
           let (DataFrame columns rows) = fromJust maybeDFrame in
-          Right (DataFrame columns []) 
+          Right (DataFrame columns [])
 
 
 
@@ -147,16 +208,16 @@ columnList :: [String] -> TableName -> Either ErrorMessage DataFrame
 columnList columnNames tName =
   let dFrame = getTable database tName in
   if (dFrame == Nothing) then Left ("Table with name: '" ++ tName ++ "' does not exist.")
-  else 
+  else
     let dFrame_ = fromJust dFrame in
     columnListDF columnNames dFrame_
 
 -- Selects given [Column] from the given DataFrame
 columnListDF :: [String] -> DataFrame -> Either ErrorMessage DataFrame
-columnListDF columnNames dFrame = 
+columnListDF columnNames dFrame =
     let cols = getColsFromDataFrame columnNames dFrame in
     if(cols == Nothing) then Left ("Some column names are incorrect.")
-    else 
+    else
       let cols_ = fromJust cols in
       Right (mergeListOfDataFrames cols_)
 
@@ -168,13 +229,13 @@ getColsFromDataFrame (x : xs) dFrame = do
   rest <- getColsFromDataFrame xs dFrame
   return (current : rest)
 
--- Doesn't work bad data( NO ERROR HANDLING )
+-- Finds and returns the Column in the given DataFrame by name
 getColumnFromTable :: String -> DataFrame -> Maybe DataFrame
 getColumnFromTable columnName dFrame =
   if(columnName == "*") then Just dFrame
     else
     let
-      cols = getColumnByName columnName dFrame 
+      cols = getColumnByName columnName dFrame
     in
       if (null cols) then Nothing
       else
@@ -186,10 +247,10 @@ getColumnFromTable columnName dFrame =
           Just (DataFrame cols colValues2dArray)
   where
     arrayTo2D arr = map (\a -> [a]) arr
-    
+
 -- Merges the given DataFrames
 mergeDataFrames :: DataFrame -> DataFrame -> DataFrame
-mergeDataFrames dFrame_1 dFrame_2 = 
+mergeDataFrames dFrame_1 dFrame_2 =
   let
     (DataFrame cols1 rows1) = dFrame_1
     (DataFrame cols2 rows2) = dFrame_2
@@ -242,16 +303,12 @@ getIndex item (x : xs) index =
 
 
 
-
--- Case sensitive getTable
+-- Returns a Maybe DataFrame from the given database by name (Case sensitive)
 getTable :: Database -> String -> Maybe DataFrame
 getTable [] _ = Nothing
 getTable _ [] = Nothing
 getTable ((name, dataframe): xs) tName =
   if name == tName then Just dataframe else getTable xs tName
-
-
-
 
 
 
