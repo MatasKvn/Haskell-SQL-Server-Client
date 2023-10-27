@@ -20,7 +20,7 @@ import Lib1
 import Data.Maybe (isNothing, fromJust)
 import Data.Either (fromRight, fromLeft)
 import Data.Char
-
+import Data.List
 
 type ErrorMessage = String
 type Database = [(TableName, DataFrame)]
@@ -123,6 +123,33 @@ removeORs input
   | otherwise = input
 
 
+
+-- Returns the String in between the first given and the second given Strings
+splitString :: String -> String -> String -> String
+splitString _ _ [] = []
+splitString startWord endWord input = 
+  removeStringFrom endWord (getStringAfter startWord input)
+
+-- Removes String after the first given String, doesn't remove anything if given String is empty
+removeStringFrom :: String -> String -> String
+removeStringFrom _ [] = []
+removeStringFrom [] input = input
+removeStringFrom word (x : xs) = 
+  if checkWord word (x : xs) then take (length word) []
+  else x : removeStringFrom word xs
+  
+-- Returns a String that starts from the first given String
+getStringAfter :: String -> String -> String
+getStringAfter _ [] = []
+getStringAfter [] input = input
+getStringAfter word (x : xs) = 
+  if checkWord word (x : xs) then (x : xs)
+  else getStringAfter word xs
+
+
+checkWord :: String -> String -> Bool
+checkWord word input =
+  capitalize (take (length word) input) == capitalize word
 
 
 
