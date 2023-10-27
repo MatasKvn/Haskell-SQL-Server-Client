@@ -144,12 +144,16 @@ capitalize = map toUpper
 
 splitBySpace :: String -> [String]
 splitBySpace [] = []
-splitBySpace input =
-  let
-    (word, rest) = break (== ' ') input
-    rest_ = dropWhile (== ' ') rest
-  in
-    word : splitBySpace rest_
+splitBySpace input = splitBySpace' (dropWhile (==' ') input)
+  where
+    splitBySpace' :: String -> [String]
+    splitBySpace' [] = []
+    splitBySpace' input = 
+      let
+        (word, rest) = break (== ' ') input
+        rest_ = dropWhile (== ' ') rest
+      in
+        word : splitBySpace' rest_
 
 
 
