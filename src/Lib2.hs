@@ -21,22 +21,26 @@ import Data.Maybe (isNothing, fromJust)
 import Data.Either (fromRight, fromLeft)
 import Data.Char
 import Data.List
+import Text.Read
+import Lib1 (renderDataFrameAsTable, findTableByName)
 
 type ErrorMessage = String
 type Database = [(TableName, DataFrame)]
 
 -- Keep the type, modify constructors
 data ParsedStatement
-  = ColumnList [String] TableName -- Columns TableName
-  | MinAggregation String TableName -- Column TableName
-  | SumAggregation String TableName -- Column TableName
-  | WhereOrCondition [String] [String] TableName -- Columns Conditions TableName
+  = ColumnList [String] [String] TableName -- Columns Conditions TableName
+  | MinAggregation String [String] TableName -- Argument Conditions TableName
+  | SumAggregation String [String] TableName -- Argument Conditions TableName
 
   | ShowTables
   | ShowTableName TableName
   deriving (Show, Eq)
 
 
+-- TODO:
+-- MIN(), MAX()
+-- add validations of columns tables in conditions so conditions like "a>1or" dont break the program
 
 -- Parses user input into an entity representing a parsed
 -- statement
@@ -55,25 +59,148 @@ parseStatement input =
 
     select = splitByChar ',' (filter (/= ' ') (drop (length "SELECT ") _select))
     from = splitByChar ',' (filter (/= ' ') (drop (length " FROM ") _from))
-    wher = map (filter (/= ' '))(splitBySubstring " OR " (drop (length " WHERE ") _wher))
+    wher = map (filter (/= ' ')) (splitBySubstring " OR " (drop (length " WHERE ") _wher))
+    showTableName = map (filter (/= ' '))(splitByChar ' '(splitString "SHOW TABLE " ";" input))
   in
   if not hasEnd then Left "Missing statement end symbol: ';'."
+  else if capitalize (filter (/= ' ') input') == "SHOWTABLES" then Right ShowTables
+  else if length showTableName == 3 && capitalize (showTableName!!0) == "SHOW" && capitalize (showTableName!!1) == "TABLE" then Right $ ShowTableName (showTableName!!2)
   else if null select then Left "Incorrect SELECT statement."
   else if null from || length from > 1 then Left "Incorrect FROM statement."
-  else
-  -- MIN()
-  if length select == 1 && isAggregateFunc (head select) "MIN" then Right $ MinAggregation (extractArgumentFromAggregateFunc (head select)) (head from)
-  -- SUM()
-  else if length select == 1 && isAggregateFunc (head select) "SUM" then Right $ SumAggregation (extractArgumentFromAggregateFunc (head select)) (head from)
-  -- COLUMN LIST
-  else if null wher then Right $ ColumnList select (head from)
-  -- WHERE OR
   else 
-    Right $ WhereOrCondition select wher (head from)
+    Right $ ColumnList select wher (head from)
+  
+  -- MIN()
+  -- if length select == 1 && isAggregateFunc (head select) "MIN" then Right $ MinAggregation (extractArgumentFromAggregateFunc (head select)) (head from)
+  -- -- SUM()
+  -- else if length select == 1 && isAggregateFunc (head select) "SUM" then Right $ SumAggregation (extractArgumentFromAggregateFunc (head select)) (head from)
+  -- else 
+  -- WHERE OR
 
-parseStatement _ = Left "Not implemented: parseStatement"
 
 
+
+executeSelect :: [String] -> [String] -> TableName -> Either ErrorMessage DataFrame
+executeSelect columns conditions tName = do
+  let
+    maybDFrame = getTable database tName
+  -- if (dFrame == Nothing) then Left ("Table with name: '" ++ tName ++ "' does not exist.")
+  -- else
+  case maybDFrame of 
+    Nothing -> Left ("Table with name: '" ++ tName ++ "' does not exist.")
+    Just dFrame -> do
+      case filterDataframe dFrame conditions of
+        Nothing -> Left ("Could not filter given table.")
+        Just filteredDataFrame -> do
+          case (columnListDF columns filteredDataFrame) of
+            Left errorMessage -> Left ("Could not render table: '" ++ tName ++"'.")
+            Right dFrame_ -> Right dFrame_
+
+
+    
+    
+    
+
+filterDataframe :: DataFrame -> [String] -> Maybe DataFrame
+filterDataframe dFrame [] = Just dFrame
+filterDataframe (DataFrame cols rows) conditions = do
+  justRows <- (compareRows rows cols conditions)
+  return (DataFrame cols justRows)
+
+compareRows :: [Row] -> [Column] -> [String] -> Maybe [Row]
+compareRows [] _ _ = Just []
+compareRows (x : xs) columns conditions = do
+  current <- compareRow x columns conditions
+  rest <- compareRows xs columns conditions
+
+  if current then return (x : rest)
+  else return rest
+
+
+compareRow :: Row -> [Column] -> [String] -> Maybe Bool
+compareRow _ _ [] = Just False
+compareRow row columns (x : xs) = do
+  current <- compareSingle row columns x
+  rest <- compareRow row columns xs
+
+  return (current || rest)
+
+
+compareSingle :: Row -> [Column] -> String -> Maybe Bool
+compareSingle row columns condition = do
+
+  compar <- extractComparison (getContainedComparison condition)
+  (a1, a2) <- extractCondtionArguments condition
+
+  let 
+    arg1 = if null a1 then Just 0 else readMaybe a1 :: Maybe Integer
+    arg2 = if null a2 then Just 0 else readMaybe a2 :: Maybe Integer
+
+  case (arg1, arg2) of
+    (Just i1, Just i2) -> return (compar i1 i2)
+    (Nothing, Just i2) -> do
+      index <- getIndex (head (getColumnByName a1 (DataFrame columns [row]))) columns 0
+      let 
+        value = row !! index
+      i1 <- getFromValue value
+
+      return (compar i1 i2)
+    (Just i1, Nothing) -> do
+      index <- getIndex (head (getColumnByName a2 (DataFrame columns [row]))) columns 0
+      let 
+        value = row !! index
+      i2 <- getFromValue value
+
+      return (compar i1 i2)
+      
+    (Nothing, Nothing) -> do
+      index1 <- getIndex (head (getColumnByName a1 (DataFrame columns [row]))) columns 0
+      index2 <- getIndex (head (getColumnByName a2 (DataFrame columns [row]))) columns 0
+      let 
+        value1 = row !! index1
+        value2 = row !! index2
+      i1 <- getFromValue value1
+      i2 <- getFromValue value2
+
+      return (compar i1 i2)
+        
+getFromValue :: Value -> Maybe Integer
+getFromValue (IntegerValue a ) = Just a
+getFromValue _ = Nothing
+
+
+
+extractCondtionArguments :: String -> Maybe (String, String)
+extractCondtionArguments [] = Nothing
+extractCondtionArguments input =
+  let
+    comparisonStr = getContainedComparison input
+    arg1 = removeStringFrom comparisonStr input
+    arg2 = drop (length comparisonStr) (getStringFrom comparisonStr input)
+  in
+  if not (null $ getContainedComparison input) then Just (arg1, arg2)
+  else Nothing
+
+extractComparison :: String -> Maybe (Integer -> Integer -> Bool)
+extractComparison input
+  | checkWord "=" input = Just (==)
+  | checkWord "!=" input = Just (/=)
+  | checkWord "<=" input = Just (<=)
+  | checkWord ">=" input = Just (>=)
+  | checkWord "<" input = Just (<)
+  | checkWord ">" input = Just (>)
+extractComparison _ = Nothing
+
+getContainedComparison :: String -> String
+getContainedComparison [] = []
+getContainedComparison input
+  | checkWord "=" input = "="
+  | checkWord "!=" input = "!="
+  | checkWord "<=" input = "<="
+  | checkWord ">=" input = ">="
+  | checkWord "<" input = "<"
+  | checkWord ">" input = ">"
+  | otherwise = getContainedComparison (tail input)
 
 
 
@@ -83,10 +210,10 @@ splitBySubstring [] a = [a]
 splitBySubstring _ [] = []
 splitBySubstring word input =
   splitByChar '\0' (replaceWordWithChar word '\0' input)
-  
+
 replaceWordWithChar :: String -> Char -> String -> String
 replaceWordWithChar _ _ [] = []
-replaceWordWithChar word char (x : xs) = 
+replaceWordWithChar word char (x : xs) =
   if checkWord word (x : xs) then char : replaceWordWithChar word char (drop (length word) (x : xs))
   else x : replaceWordWithChar word char xs
 
@@ -158,10 +285,7 @@ executeStatement :: ParsedStatement -> Either ErrorMessage DataFrame
 executeStatement (ShowTables) = Right showTables
 executeStatement (ShowTableName tName) = showTableByName tName
 
-executeStatement (ColumnList columns tName) = columnList columns tName
-executeStatement (MinAggregation argument tName) = Left "Execution of MIN() not yet implemented."
-executeStatement (SumAggregation argument tName) = Left "Execution of SUM() not yet implemented."
-executeStatement (WhereOrCondition columns conditions tName) = Left "Execution of WHERE OR not yet implemented"
+executeStatement (ColumnList columns conditions tName) = executeSelect columns conditions tName
 executeStatement _ = Left "Not implemented: executeStatement"
 
 
@@ -191,7 +315,6 @@ showTableByName tName = showTableByName_ database tName
         else
           let (DataFrame columns rows) = fromJust maybeDFrame in
           Right (DataFrame columns [])
-
 
 
 
@@ -318,11 +441,12 @@ getTable ((name, dataframe): xs) tName =
 
 
 -- TEST DATA
-column1 = Column "Column1" IntegerType
-column2 = Column "Column2" StringType
-column3 = Column "C" BoolType
-row1 = [IntegerValue 5, StringValue "ddddddddddd", BoolValue True]
+a = Column "a" IntegerType
+b = Column "b" IntegerType
+c = Column "c" StringType
+d = Column "d" BoolType
+row1 = [IntegerValue 5, IntegerValue 15, StringValue "ddddddddddd", BoolValue True]
 row2 :: [Value]
-row2 = [IntegerValue 10, StringValue "no", BoolValue False]
+row2 = [IntegerValue 10, IntegerValue 20, StringValue "no", BoolValue False]
 testData :: DataFrame
-testData = DataFrame [column1, column2, column3] [row1, row2]
+testData = DataFrame [a, b, c, d] [row1, row2]
