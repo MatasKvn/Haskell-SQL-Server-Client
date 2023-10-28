@@ -30,13 +30,12 @@ data ParsedStatement
   = ColumnList [String] TableName -- Columns TableName
   | MinAggregation String TableName -- Column TableName
   | SumAggregation String TableName -- Column TableName
-  | WhereOrCondition [String] [IntCondition] TableName -- Columns Conditions TableName
+  | WhereOrCondition [String] [String] TableName -- Columns Conditions TableName
 
   | ShowTables
   | ShowTableName TableName
   deriving (Show, Eq)
 
-type IntCondition = String
 
 
 -- Parses user input into an entity representing a parsed
@@ -44,107 +43,74 @@ type IntCondition = String
 parseStatement :: String -> Either ErrorMessage ParsedStatement
 parseStatement input =
   let
-    -- Remove everything after the semicolon and split everything by 'SPACE' in words
-    (statement, semicolon) = break (==';') input
-    words = splitBySpace statement
+    (beforeSemicolon, afterSemicolon) = break (== ';') input
+    hasEnd = not (null afterSemicolon) && head afterSemicolon == ';'
+    input'
+      | not (null beforeSemicolon) && not (null afterSemicolon) && head afterSemicolon == ';' = beforeSemicolon
+      | otherwise = []
+
+    _select = splitString "SELECT" " FROM" input'
+    _from = splitString " FROM" " WHERE" input'
+    _wher = splitString " WHERE" "" input'
+
+    select = splitByChar ',' (filter (/= ' ') (drop (length "SELECT ") _select))
+    from = splitByChar ',' (filter (/= ' ') (drop (length " FROM ") _from))
+    wher = map (filter (/= ' '))(splitBySubstring " OR " (drop (length " WHERE ") _wher))
   in
-  -- Check if statement is ended by ';'
-  if (null semicolon) then Left "Missing statement end symbol: ';'."
+  if not hasEnd then Left "Missing statement end symbol: ';'."
+  else if null select then Left "Incorrect SELECT statement."
+  else if null from || length from > 1 then Left "Incorrect FROM statement."
   else
-    -- SHOW TABLES
-    if (length words) == 2 && (capitalize(words!!0 ++ words!!1)) == "SHOWTABLES"
-      then Right ShowTables
-    -- SHOW TABLE "name"
-    else if (length words) == 3 && (capitalize (words!!0 ++ words!!1)) == "SHOWTABLE"
-      then Right (ShowTableName (words!!2))
-    -- SELECT
-    else if (length words) >= 3 && capitalize (words!!0) == "SELECT"
-      then
-        let
-          noSelectWord = tail words -- remove 'SELECT' keyword
-          (select, _from) = break (\ x -> (capitalize x) == "FROM") noSelectWord -- separate 'SELECT' and 'FROM'
-        in
-        if (null _from) || (length _from) == 1 then Left "Incorrect SELECT statement format."
-        else
-        let
-          from' = tail _from -- remove 'FROM' keyword
-          (from, _wher) = break (\ x -> (capitalize x) == "WHERE") from' -- separate 'FROM' and 'WHERE'
-          tName = head from -- take first occuring TableName
-        in
-        -- multiple 'FROM's 
-        if (null _wher && length from > 1)
-          then Left "Selecting from multiple tables is not allowed."
-        -- if no 'WHERE' keyword
-        else if (null _wher)
-          then
-            -- MIN
-            if length select == 1 && isAggregateFunc (select!!0) "MIN"
-              then Right $ MinAggregation (extractArgumentFromAggregateFunc $ select!!0) tName
-            else
-            -- SUM
-            if length select == 1 && isAggregateFunc (select!!0) "SUM"
-              then Right $ SumAggregation (extractArgumentFromAggregateFunc $ select!!0) tName
-            -- COLUMN LIST
-            else Right (ColumnList select tName)
-        -- if WHERE 'keyword'
-        else if (length _wher <= 1)
-          then Left "Missing argumnets in the 'WHERE' clause."
-        else if (length _wher > 1) -- For readability
-          then
-            let
-              wher_ors = tail _wher -- conditions with ORs
-              wher = removeORs wher_ors -- list of conditions
-            in
-            -- WHERE OR CONDITION
-            if (null wher || last wher == "OR") then Left "Error in 'WHERE' clause."
-            else Right $ WhereOrCondition (select) (wher) (tName)
+  -- MIN()
+  if length select == 1 && isAggregateFunc (head select) "MIN" then Right $ MinAggregation (extractArgumentFromAggregateFunc (head select)) (head from)
+  -- SUM()
+  else if length select == 1 && isAggregateFunc (head select) "SUM" then Right $ SumAggregation (extractArgumentFromAggregateFunc (head select)) (head from)
+  -- COLUMN LIST
+  else if null wher then Right $ ColumnList select (head from)
+  -- WHERE OR
+  else 
+    Right $ WhereOrCondition select wher (head from)
 
-        else Left "Not reachable"
-    else
-      Left "Not implemented: parseStatement"
+parseStatement _ = Left "Not implemented: parseStatement"
 
 
-removeORs :: [String] -> [String]
-removeORs [] = []
-removeORs input
-  | length input >= 1 && capitalize (head input) == "OR" = []
-  | length input >= 1 && capitalize (last input) == "OR" = []
-  | length input >= 2 = 
-    let
-      (x : xs) = input
-      (y : ys) = xs
-    in
-    if (capitalize y == "OR")
-      then
-        x : removeORs ys
-    else if (capitalize x /= "OR" && capitalize y /= "OR")
-      then ["OR"]
-    else  ["OR"]
-  | otherwise = input
 
 
+
+
+splitBySubstring :: String -> String -> [String]
+splitBySubstring [] a = [a]
+splitBySubstring _ [] = []
+splitBySubstring word input =
+  splitByChar '\0' (replaceWordWithChar word '\0' input)
+  
+replaceWordWithChar :: String -> Char -> String -> String
+replaceWordWithChar _ _ [] = []
+replaceWordWithChar word char (x : xs) = 
+  if checkWord word (x : xs) then char : replaceWordWithChar word char (drop (length word) (x : xs))
+  else x : replaceWordWithChar word char xs
 
 -- Returns the String in between the first given and the second given Strings
 splitString :: String -> String -> String -> String
 splitString _ _ [] = []
-splitString startWord endWord input = 
-  removeStringFrom endWord (getStringAfter startWord input)
+splitString startWord endWord input =
+  removeStringFrom endWord (getStringFrom startWord input)
 
 -- Removes String after the first given String, doesn't remove anything if given String is empty
 removeStringFrom :: String -> String -> String
 removeStringFrom _ [] = []
 removeStringFrom [] input = input
-removeStringFrom word (x : xs) = 
+removeStringFrom word (x : xs) =
   if checkWord word (x : xs) then take (length word) []
   else x : removeStringFrom word xs
-  
+
 -- Returns a String that starts from the first given String
-getStringAfter :: String -> String -> String
-getStringAfter _ [] = []
-getStringAfter [] input = input
-getStringAfter word (x : xs) = 
+getStringFrom :: String -> String -> String
+getStringFrom _ [] = []
+getStringFrom [] input = input
+getStringFrom word (x : xs) =
   if checkWord word (x : xs) then (x : xs)
-  else getStringAfter word xs
+  else getStringFrom word xs
 
 
 checkWord :: String -> String -> Bool
@@ -169,18 +135,19 @@ extractArgumentFromAggregateFunc input =
 capitalize :: String -> String
 capitalize = map toUpper
 
-splitBySpace :: String -> [String]
-splitBySpace [] = []
-splitBySpace input = splitBySpace' (dropWhile (==' ') input)
+splitByChar :: Char -> String -> [String]
+splitByChar _ [] = []
+splitByChar char input = splitByChar' char input
   where
-    splitBySpace' :: String -> [String]
-    splitBySpace' [] = []
-    splitBySpace' input = 
+    splitByChar' :: Char -> String -> [String]
+    splitByChar' _ [] = []
+    splitByChar' char input =
       let
-        (word, rest) = break (== ' ') input
-        rest_ = dropWhile (== ' ') rest
+        (word, rest) = break (== char) input
+        rest_ = dropWhile (== char) rest
       in
-        word : splitBySpace' rest_
+        word : (splitByChar' char rest_)
+
 
 
 
