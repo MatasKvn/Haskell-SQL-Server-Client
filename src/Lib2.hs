@@ -67,15 +67,12 @@ parseStatement input =
   else if length showTableName == 3 && capitalize (showTableName!!0) == "SHOW" && capitalize (showTableName!!1) == "TABLE" then Right $ ShowTableName (showTableName!!2)
   else if null select then Left "Incorrect SELECT statement."
   else if null from || length from > 1 then Left "Incorrect FROM statement."
-  else 
-    Right $ ColumnList select wher (head from)
-  
-  -- MIN()
-  -- if length select == 1 && isAggregateFunc (head select) "MIN" then Right $ MinAggregation (extractArgumentFromAggregateFunc (head select)) (head from)
+  -- -- MIN()
+  -- else if length select == 1 && isAggregateFunc (head select) "MIN" then Right $ MinAggregation (extractArgumentFromAggregateFunc (head select)) (head from)
   -- -- SUM()
   -- else if length select == 1 && isAggregateFunc (head select) "SUM" then Right $ SumAggregation (extractArgumentFromAggregateFunc (head select)) (head from)
-  -- else 
-  -- WHERE OR
+  else 
+    Right $ ColumnList select wher (head from)
 
 
 
@@ -139,14 +136,16 @@ compareSingle row columns condition = do
   case (arg1, arg2) of
     (Just i1, Just i2) -> return (compar i1 i2)
     (Nothing, Just i2) -> do
-      index <- getIndex (head (getColumnByName a1 (DataFrame columns [row]))) columns 0
+      c1 <- getColumnByName a1 (DataFrame columns [row])
+      index <- getIndex c1 columns 0
       let 
         value = row !! index
       i1 <- getFromValue value
 
       return (compar i1 i2)
     (Just i1, Nothing) -> do
-      index <- getIndex (head (getColumnByName a2 (DataFrame columns [row]))) columns 0
+      c2 <- getColumnByName a2 (DataFrame columns [row])
+      index <- getIndex c2 columns 0
       let 
         value = row !! index
       i2 <- getFromValue value
@@ -154,8 +153,10 @@ compareSingle row columns condition = do
       return (compar i1 i2)
       
     (Nothing, Nothing) -> do
-      index1 <- getIndex (head (getColumnByName a1 (DataFrame columns [row]))) columns 0
-      index2 <- getIndex (head (getColumnByName a2 (DataFrame columns [row]))) columns 0
+      c1 <- getColumnByName a1 (DataFrame columns [row])
+      c2 <- getColumnByName a2 (DataFrame columns [row])
+      index1 <- getIndex c1 columns 0
+      index2 <- getIndex c2 columns 0
       let 
         value1 = row !! index1
         value2 = row !! index2
@@ -350,20 +351,20 @@ getColsFromDataFrame (x : xs) dFrame = do
 
 -- Finds and returns the Column in the given DataFrame by name
 getColumnFromTable :: String -> DataFrame -> Maybe DataFrame
-getColumnFromTable columnName dFrame =
+getColumnFromTable columnName dFrame = do
   if(columnName == "*") then Just dFrame
     else
     let
       cols = getColumnByName columnName dFrame
     in
-      if (null cols) then Nothing
+      if (cols == Nothing) then Nothing
       else
         let
-          col = head cols
+          col = fromJust cols
           colValues = getColValues col dFrame
           colValues2dArray = arrayTo2D colValues
         in
-          Just (DataFrame cols colValues2dArray)
+          Just (DataFrame [col] colValues2dArray)
   where
     arrayTo2D arr = map (\a -> [a]) arr
 
@@ -391,9 +392,15 @@ mergeListOfDataFrames (x : xs) =
 
 
 -- Returns a single Column(in a list) that matches the given String in the DataFrame
-getColumnByName :: String -> DataFrame -> [Column]
-getColumnByName colName (DataFrame cols _) =
-  findIt colName cols
+getColumnByName :: String -> DataFrame -> Maybe Column
+getColumnByName colName (DataFrame cols _) = do
+  let
+    result = findIt colName cols
+  
+  case result of
+    [] -> (Nothing)
+    [a] -> return a
+
   where
     findIt :: String -> [Column] -> [Column]
     findIt _ [] = []
