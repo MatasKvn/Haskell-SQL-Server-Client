@@ -2,7 +2,10 @@ import Data.Either
 import Data.Maybe ()
 import InMemoryTables qualified as D
 import Lib1
+import Lib2
+import DataFrame
 import Test.Hspec
+import qualified Lib2
 
 main :: IO ()
 main = hspec $ do
@@ -34,3 +37,49 @@ main = hspec $ do
   describe "Lib1.renderDataFrameAsTable" $ do
     it "renders a table" $ do
       Lib1.renderDataFrameAsTable 100 (snd D.tableEmployees) `shouldSatisfy` not . null
+
+  -- Lib2.hs Tests
+  describe "\nLib2.hs SHOW TABLE & SHOW TABLE 'name'" $ do
+    it "shows tables" $ do
+      Lib2.parseStatement "Show Tables   ; a;sdf;; das;af;sd;;; ;;a" `shouldBe` Right ShowTables
+    it "shows table 'name'" $ do
+      Lib2.parseStatement "   Show TablE     employees  ;" `shouldBe` Right (ShowTableName "employees")
+    it "handles bad 'show tables' input" $ do
+      Lib2.parseStatement "show tables effefefe;" `shouldSatisfy` isLeft
+    it "handles bad 'show tables name' input" $ do
+      Lib2.parseStatement "show tables employees   123478451   ;" `shouldSatisfy` isLeft
+
+  describe "Lib2.hs Parsing" $ do
+    it "handles incorrect queries" $ do
+      Lib2.parseStatement "" `shouldSatisfy` isLeft
+      Lib2.parseStatement ";" `shouldSatisfy` isLeft
+      Lib2.parseStatement "select * from;" `shouldSatisfy` isLeft
+      Lib2.parseStatement "selct * from;" `shouldSatisfy` isLeft
+
+    it "parses correct queries" $ do
+      Lib2.parseStatement "SELECT * FROM employees;" `shouldBe` Right (ColumnList ["*"] [] "employees")
+      Lib2.parseStatement "SELECT id, name FROM employees;" `shouldBe` Right (ColumnList ["id", "name"] [] "employees")
+    it "parses correct queries with WHERE" $ do
+      Lib2.parseStatement "SeLeCt name, surname, name, surname FroM employees wheRE id=1;" `shouldBe` Right (ColumnList ["name", "surname", "name", "surname"] ["id=1"] "employees")
+      Lib2.parseStatement "SELECT   *    FROM    employees   WHERE id > 1 OR  id !=5 OR id<> 10;" `shouldBe` Right (ColumnList ["*"] ["id>1", "id!=5", "id<>10"] "employees")
+    it "parses correct queries with MIN, SUM" $ do
+      Lib2.parseStatement "SELECT MIN(id) FROM employees;" `shouldBe` Right (ColumnList ["MIN(id)"] [] "employees")
+      Lib2.parseStatement "SELECT sUm(id) FROM employees;" `shouldBe` Right (ColumnList ["sUm(id)"] [] "employees")
+      Lib2.parseStatement "SELECT sum(id), min(name) FROM employees WHERE id>0;" `shouldBe` Right (ColumnList ["sum(id)", "min(name)"] ["id>0"] "employees")
+
+  describe "Lib2.hs Executing ParsedStatemtends" $ do
+    it "handles incorrect data" $ do
+      Lib2.executeStatement (ColumnList ["iddddddddddd", "name", "surname"] [] "employees") `shouldSatisfy` isLeft
+      Lib2.executeStatement (ColumnList ["iddddddddddd", "min(name)", "surname"] ["id=1"] "employees") `shouldSatisfy` isLeft
+    it "handles incorrect conditions" $ do
+      Lib2.executeStatement (ColumnList ["id"] ["a"] "employees") `shouldSatisfy` isLeft
+      Lib2.executeStatement (ColumnList ["id"] ["aaa<=5"] "employees") `shouldSatisfy` isLeft
+      Lib2.executeStatement (ColumnList ["id"] [""] "employees") `shouldSatisfy` isLeft
+      
+    it "executes correct data" $ do
+      Lib2.executeStatement (ColumnList ["name", "surname", "name", "surname"] [] "employees") `shouldBe` Right (DataFrame [Column "name" StringType,Column "surname" StringType,Column "name" StringType,Column "surname" StringType] [[StringValue "Vi",StringValue "Po",StringValue "Vi",StringValue "Po"],[StringValue "Ed",StringValue "Dl",StringValue "Ed",StringValue "Dl"]])
+    it "executes correct data with 'OR' conditions" $ do
+      Lib2.executeStatement (ColumnList ["name", "surname", "name", "surname"] ["id=1"] "employees") `shouldBe` Right (DataFrame [Column "name" StringType,Column "surname" StringType,Column "name" StringType,Column "surname" StringType] [[StringValue "Vi",StringValue "Po",StringValue "Vi",StringValue "Po"]])
+      Lib2.executeStatement (ColumnList ["*"] ["id>1", "id!=5", "id<>10"] "employees") `shouldBe` Right (DataFrame [Column "id" IntegerType,Column "name" StringType,Column "surname" StringType] [[IntegerValue 1,StringValue "Vi",StringValue "Po"],[IntegerValue 2,StringValue "Ed",StringValue "Dl"]])  
+      Lib2.executeStatement (ColumnList ["SUM(id)", "MIN(name)"] ["id>1"] "employees") `shouldBe` Right (DataFrame [Column "sum" IntegerType,Column "min" StringType] [[IntegerValue 2,StringValue "Ed"]])
+    

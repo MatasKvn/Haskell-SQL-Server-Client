@@ -1,10 +1,12 @@
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use if" #-}
 
 module Lib2
-  ( parseStatement,
-    executeStatement,
-    ParsedStatement
-  )
+  -- ( parseStatement,
+  --   executeStatement,
+  --   ParsedStatement
+  -- )
 where
 
 -- Original imports
@@ -30,17 +32,10 @@ type Database = [(TableName, DataFrame)]
 -- Keep the type, modify constructors
 data ParsedStatement
   = ColumnList [String] [String] TableName -- Columns Conditions TableName
-  | MinAggregation String [String] TableName -- Argument Conditions TableName
-  | SumAggregation String [String] TableName -- Argument Conditions TableName
 
   | ShowTables
   | ShowTableName TableName
   deriving (Show, Eq)
-
-
--- TODO:
--- MIN(), MAX()
--- add validations of columns tables in conditions so conditions like "a>1or" dont break the program
 
 -- Parses user input into an entity representing a parsed
 -- statement
@@ -67,36 +62,141 @@ parseStatement input =
   else if length showTableName == 3 && capitalize (showTableName!!0) == "SHOW" && capitalize (showTableName!!1) == "TABLE" then Right $ ShowTableName (showTableName!!2)
   else if null select then Left "Incorrect SELECT statement."
   else if null from || length from > 1 then Left "Incorrect FROM statement."
-  -- -- MIN()
-  -- else if length select == 1 && isAggregateFunc (head select) "MIN" then Right $ MinAggregation (extractArgumentFromAggregateFunc (head select)) (head from)
-  -- -- SUM()
-  -- else if length select == 1 && isAggregateFunc (head select) "SUM" then Right $ SumAggregation (extractArgumentFromAggregateFunc (head select)) (head from)
   else 
     Right $ ColumnList select wher (head from)
 
 
+-- Executes a parsed statemet. Produces a DataFrame. Uses
+-- InMemoryTables.databases a source of data.
+executeStatement :: ParsedStatement -> Either ErrorMessage DataFrame
+executeStatement (ShowTables) = Right showTables
+executeStatement (ShowTableName tName) = showTableByName tName
+executeStatement (ColumnList columns conditions tName) = executeSelect columns conditions tName
+executeStatement _ = Left "Not implemented: executeStatement"
 
 
 executeSelect :: [String] -> [String] -> TableName -> Either ErrorMessage DataFrame
 executeSelect columns conditions tName = do
   let
     maybDFrame = getTable database tName
-  -- if (dFrame == Nothing) then Left ("Table with name: '" ++ tName ++ "' does not exist.")
-  -- else
+
   case maybDFrame of 
     Nothing -> Left ("Table with name: '" ++ tName ++ "' does not exist.")
     Just dFrame -> do
       case filterDataframe dFrame conditions of
         Nothing -> Left ("Could not filter given table.")
         Just filteredDataFrame -> do
-          case (columnListDF columns filteredDataFrame) of
-            Left errorMessage -> Left ("Could not render table: '" ++ tName ++"'.")
-            Right dFrame_ -> Right dFrame_
+          case isOnlyAggregateFunction columns of
+            True -> do
+              case executeAggregateFunctions columns filteredDataFrame of
+                Left errorMessage -> Left errorMessage
+                Right dFrame_ -> Right dFrame_
+            False -> do 
+              case (columnListDF columns filteredDataFrame) of
+                Left errorMessage -> Left errorMessage
+                Right dFrame_ -> Right dFrame_
+
+-- ||| AGGREGATE FUNCTIONS |||
+
+isOnlyAggregateFunction :: [String] -> Bool
+isOnlyAggregateFunction [] = True
+isOnlyAggregateFunction (x:xs) = (isAggregateFunc x "MIN" || isAggregateFunc x "SUM") && isOnlyAggregateFunction xs
+
+executeAggregateFunctions :: [String] -> DataFrame -> Either ErrorMessage DataFrame
+executeAggregateFunctions (x:xs) dFrame = do
+  current <- executeAggregateFunction x dFrame
+  case null xs of
+    True -> Right current
+    False -> do
+      case executeAggregateFunctions xs dFrame of
+        Left message -> Left message
+        Right rest_ -> Right (mergeDataFrames current rest_)
+
+    
+executeAggregateFunction :: String -> DataFrame -> Either ErrorMessage DataFrame
+executeAggregateFunction function dFrame = do
+ if isAggregateFunc function "MIN" then minAggregation (extractArgumentFromAggregateFunc function ) dFrame
+ else if isAggregateFunc function "SUM" then sumAggregation (extractArgumentFromAggregateFunc function) dFrame
+ else Left ("Aggregate function '" ++ function ++ "' not supported.")
 
 
+minAggregation :: String -> DataFrame -> Either ErrorMessage DataFrame
+minAggregation columnName filteredDataFrame = do
+  case getColumnByName columnName filteredDataFrame of
+    Nothing -> Left ("Column '" ++ columnName ++ "' does not exitst.")
+    Just col -> do
+      let 
+        (Column colName colType) = col
+        values = getColValues col filteredDataFrame
+        resultColumn = Column "min" colType
+      --
+      case values of
+        [] -> Left "No values in the column."
+        (x:xs) -> case colType of
+          IntegerType -> case getMinInt (x:xs) of
+            Nothing -> Left "Invalid data type for MIN aggregation."
+            Just minVal -> Right $ DataFrame [resultColumn] [[IntegerValue minVal]]
+          BoolType -> case getMinBool (x:xs) of
+            Nothing -> Left "Invalid data type for MIN aggregation."
+            Just minVal -> Right $ DataFrame [resultColumn] [[BoolValue minVal]]
+          StringType -> case getMinString (x:xs) of
+            Nothing -> Left "Invalid data type for MIN aggregation."
+            Just minVal -> Right $ DataFrame [resultColumn] [[StringValue minVal]]
+      
+sumAggregation :: String -> DataFrame -> Either ErrorMessage DataFrame         
+sumAggregation columnName filteredDataFrame = do
+  case getColumnByName columnName filteredDataFrame of
+    Nothing -> Left ("Column '" ++ columnName ++ "' does not exitst.")
+    Just col -> do
+      let 
+        (Column colName colType) = col
+        values = getColValues col filteredDataFrame
+        resultColumn = Column "sum" colType
+
+      case values of 
+        [] -> Left "No values in the column."
+        values -> case colType of
+            IntegerType -> Right $ DataFrame [resultColumn] [[IntegerValue (getSumInt values)]]
+            _ -> Left "Invalid data type for SUM aggregation."
+
+-- Computes the sum of all integers in a list of Values
+getSumInt :: [Value] -> Integer
+getSumInt = sum . map extractInt
+
+
+-- Extracts the minimum integer value from a list of Values
+getMinInt :: [Value] -> Maybe Integer
+getMinInt [] = Nothing
+getMinInt values = Just $ minimum $ map extractInt values
+
+-- Extracts an Integer from a Value if possible
+extractInt :: Value -> Integer
+extractInt (IntegerValue x) = x
+extractInt _ = error "Not an IntegerValue"
+
+-- Extracts the minimum boolean value from a list of Values
+getMinBool :: [Value] -> Maybe Bool
+getMinBool [] = Nothing
+getMinBool values = Just $ minimum $ map extractBool values
+
+-- Extracts a Bool from a Value if possible
+extractBool :: Value -> Bool
+extractBool (BoolValue x) = x
+extractBool _ = error "Not a BoolValue"
+
+-- Extracts the minimum string value from a list of Values
+getMinString :: [Value] -> Maybe String
+getMinString [] = Nothing
+getMinString values = Just $ minimum $ map extractString values
+
+-- Extracts a String from a Value if possible
+extractString :: Value -> String
+extractString (StringValue x) = x
+extractString _ = error "Not a StringValue"
     
+-- ||| END OF AGGREGATE FUNCTIONS |||
     
-    
+-- ||| WHERE OR IMPLEMENTATION |||
 
 filterDataframe :: DataFrame -> [String] -> Maybe DataFrame
 filterDataframe dFrame [] = Just dFrame
@@ -113,7 +213,6 @@ compareRows (x : xs) columns conditions = do
   if current then return (x : rest)
   else return rest
 
-
 compareRow :: Row -> [Column] -> [String] -> Maybe Bool
 compareRow _ _ [] = Just False
 compareRow row columns (x : xs) = do
@@ -122,7 +221,7 @@ compareRow row columns (x : xs) = do
 
   return (current || rest)
 
-
+--WHERE INT
 compareSingle :: Row -> [Column] -> String -> Maybe Bool
 compareSingle row columns condition = do
 
@@ -164,12 +263,10 @@ compareSingle row columns condition = do
       i2 <- getFromValue value2
 
       return (compar i1 i2)
-        
-getFromValue :: Value -> Maybe Integer
-getFromValue (IntegerValue a ) = Just a
-getFromValue _ = Nothing
-
-
+  where        
+    getFromValue :: Value -> Maybe Integer
+    getFromValue (IntegerValue a ) = Just a
+    getFromValue _ = Nothing
 
 extractCondtionArguments :: String -> Maybe (String, String)
 extractCondtionArguments [] = Nothing
@@ -186,6 +283,7 @@ extractComparison :: String -> Maybe (Integer -> Integer -> Bool)
 extractComparison input
   | checkWord "=" input = Just (==)
   | checkWord "!=" input = Just (/=)
+  | checkWord "<>" input = Just (/=)
   | checkWord "<=" input = Just (<=)
   | checkWord ">=" input = Just (>=)
   | checkWord "<" input = Just (<)
@@ -197,14 +295,17 @@ getContainedComparison [] = []
 getContainedComparison input
   | checkWord "=" input = "="
   | checkWord "!=" input = "!="
+  | checkWord "<>" input = "<>"
   | checkWord "<=" input = "<="
   | checkWord ">=" input = ">="
   | checkWord "<" input = "<"
   | checkWord ">" input = ">"
   | otherwise = getContainedComparison (tail input)
 
+-- ||| END OF WHERE OR IMPLEMENTATION |||
 
 
+-- ||| PARSING HELPER FUNCTIONS |||
 
 splitBySubstring :: String -> String -> [String]
 splitBySubstring [] a = [a]
@@ -245,8 +346,6 @@ checkWord :: String -> String -> Bool
 checkWord word input =
   capitalize (take (length word) input) == capitalize word
 
-
-
 isAggregateFunc :: String -> String -> Bool
 isAggregateFunc input functionName = capitalize (take 4 input) == capitalize (functionName++"(") && last input == ')'
 
@@ -276,22 +375,9 @@ splitByChar char input = splitByChar' char input
       in
         word : (splitByChar' char rest_)
 
+-- ||| END OF PARSING HELPER FUNCTIONS |||
 
-
-
-
--- Executes a parsed statemet. Produces a DataFrame. Uses
--- InMemoryTables.databases a source of data.
-executeStatement :: ParsedStatement -> Either ErrorMessage DataFrame
-executeStatement (ShowTables) = Right showTables
-executeStatement (ShowTableName tName) = showTableByName tName
-
-executeStatement (ColumnList columns conditions tName) = executeSelect columns conditions tName
-executeStatement _ = Left "Not implemented: executeStatement"
-
-
-
-
+-- ||| SHOW TABLE(S) |||
 
 -- SHOW TABLES (Lists avaivable tables in database)
 showTables :: DataFrame
@@ -316,22 +402,12 @@ showTableByName tName = showTableByName_ database tName
         else
           let (DataFrame columns rows) = fromJust maybeDFrame in
           Right (DataFrame columns [])
-
-
-
-
-
--- COLUMN LIST
 --
--- Selects given [Column] from a given Table
-columnList :: [String] -> TableName -> Either ErrorMessage DataFrame
-columnList columnNames tName =
-  let dFrame = getTable database tName in
-  if (dFrame == Nothing) then Left ("Table with name: '" ++ tName ++ "' does not exist.")
-  else
-    let dFrame_ = fromJust dFrame in
-    columnListDF columnNames dFrame_
+-- ||| END OF SHOW TABLE(S) |||
 
+
+-- ||| WORKING WITH COLUMNS |||
+--
 -- Selects given [Column] from the given DataFrame
 columnListDF :: [String] -> DataFrame -> Either ErrorMessage DataFrame
 columnListDF columnNames dFrame =
@@ -390,7 +466,6 @@ mergeListOfDataFrames (x : xs) =
   else
     mergeDataFrames x (mergeListOfDataFrames xs)
 
-
 -- Returns a single Column(in a list) that matches the given String in the DataFrame
 getColumnByName :: String -> DataFrame -> Maybe Column
 getColumnByName colName (DataFrame cols _) = do
@@ -425,16 +500,20 @@ getIndex _ [] _ = Nothing
 getIndex item (x : xs) index =
   if item == x then Just index
   else getIndex item xs (index + 1)
+--
+-- ||| END OF WORKING WITH COLUMNS |||
 
 
-
-
+-- ||| idk |||
+--
 -- Returns a Maybe DataFrame from the given database by name (Case sensitive)
 getTable :: Database -> String -> Maybe DataFrame
 getTable [] _ = Nothing
 getTable _ [] = Nothing
 getTable ((name, dataframe): xs) tName =
   if name == tName then Just dataframe else getTable xs tName
+--
+-- ||| END OF idk |||
 
 
 
