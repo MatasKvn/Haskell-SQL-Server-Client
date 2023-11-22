@@ -35,7 +35,12 @@ data ExecutionAlgebra next
   | UpdateStatement String [String] [String] -- Table [column=newValue] [Condition]
   | InsertStatement String [String] [String] -- Table [Column] [Value]
 
+  | ShowTables
+  | ShowTableName String -- Table
+  | ShowCurrentTime -- NOW()
+
   deriving (Functor)
+  
 -- Show instance for ExecutionAlgebra
 instance Show (ExecutionAlgebra a) where
   show (LoadFile tableName _) = "LoadFile " ++ show tableName
@@ -44,25 +49,61 @@ instance Show (ExecutionAlgebra a) where
   show (DeleteStatement table conditions) = "DeleteStatement " ++ show table ++ show conditions
   show (InsertStatement table updates conditions) = "InstertStatement " ++ show table ++ show updates ++ show conditions
   show (UpdateStatement table columns conditions) = "UpdateStatement " ++ show table ++ show columns ++ show conditions
+  show (ShowTables) = "ShowTables"
+  show (ShowTableName table) = "ShowTableName " ++ show table
+  show (ShowCurrentTime) = "ShowCurrentTime"
 
 type Execution = Free ExecutionAlgebra
 
+loadFile :: TableName -> Execution FileContent
+loadFile name = liftF $ LoadFile name id
+
+getTime :: Execution UTCTime
+getTime = liftF $ GetTime id
+
+executeSql :: String -> Execution (Either ErrorMessage DataFrame)
+executeSql sql = do
+  case parseSql sql of
+    Left err -> return $ Left err
+    Right parsedStatement -> executeParsedStatement parsedStatement
+    
+  -- executeParsedStatement parsedStatement
+  -- return $ Left "implement me"
+
+executeParsedStatement :: ExecutionAlgebra () -> Execution (Either ErrorMessage DataFrame)
+executeParsedStatement statement = do
+  -- Implement the logic to execute the parsed statement and return a DataFrame
+  return $ Left $ "implement me" ++ "\nTried executing: " ++ show statement
 
 
--- //////////////////////////// PARSING
 
 
+
+
+
+
+
+
+
+
+
+
+
+-- //////////////////////////// PARSING ////////////////////////////
+
+-- String to SQL statement parser(takes string and returns error or the corresponding sql statement constructor)
 parseSql :: String -> Either ErrorMessage (ExecutionAlgebra ())
 parseSql input = case parse sqlParser "" input of
   Left err -> Left $ "Parse error at " ++ show err
   Right result -> Right result
 
-
+-- SQL statement parser (parses all statements)
 sqlParser :: Parser (ExecutionAlgebra ()) 
-sqlParser = choice [selectParser, deleteParser, insertParser, updateParser] 
+sqlParser = do
+  spaces
+  choice [selectParser, deleteParser, insertParser, updateParser, try showTablesParser <|> showTableNameParser, nowParser] 
 
-
--- SELECT
+-- SELECT statement parser
 selectParser :: Parser (ExecutionAlgebra ())
 selectParser = do
   spaces
@@ -78,7 +119,7 @@ selectParser = do
   string ";"
   return $ SelectStatement columns tables conditions
 
--- DELETE
+-- DELETE statement parser
 deleteParser :: Parser (ExecutionAlgebra ())
 deleteParser = do
   spaces
@@ -93,8 +134,7 @@ deleteParser = do
   string ";"
   return $ DeleteStatement table conditions
 
--- INSERT
--- Table [Column] [Value]
+-- INSERT statement parser
 insertParser :: Parser (ExecutionAlgebra ())
 insertParser = do
   spaces
@@ -123,8 +163,7 @@ insertParser = do
         spaces
         return values
 
--- UPDATE
--- Table [column=newValue] [Condition]
+-- UPDATE statement parser
 updateParser :: Parser (ExecutionAlgebra ())
 updateParser = do
   spaces
@@ -137,9 +176,42 @@ updateParser = do
   string ";"
   return $ UpdateStatement table updates conditions
 
+-- NOW() statement parser
+nowParser :: Parser (ExecutionAlgebra ())
+nowParser = do
+  spaces
+  caseInsensitiveString "NOW()"
+  spaces
+  string ";"
+  return $ ShowCurrentTime
 
--- ///// Helpers
--- Parse a list of columns
+-- SHOW TABLES statement parser
+showTablesParser :: Parser (ExecutionAlgebra ())
+showTablesParser = do
+  spaces
+  caseInsensitiveString "SHOW"
+  spaces
+  caseInsensitiveString "TABLES"
+  spaces
+  string ";"
+  return ShowTables
+
+-- SHOW TABLE name statement parser
+showTableNameParser :: Parser (ExecutionAlgebra ())
+showTableNameParser = do
+  spaces
+  caseInsensitiveString "SHOW"
+  spaces
+  caseInsensitiveString "TABLE"
+  space
+  table <- many1 (alphaNum <|> char '_')
+  spaces
+  string ";"
+  return $ ShowTableName table
+
+
+-- ///// Parsing Helper functions
+-- Parse a list of words separated by ',' (columns, tableNames)
 commaSepListParser :: Parser [String]
 commaSepListParser = do
   spaces
@@ -154,7 +226,7 @@ identifierParser = do
   spaces
   return items
 
--- Parses the "WHERE" part
+-- WHERE part parser (for SELECT, DELETE, UPDATE)
 whereParser :: Parser [String]
 whereParser = do
   spaces
@@ -178,7 +250,7 @@ conditionParser = do
   spaces
   return $ conditionLeft ++ operator ++ conditionRight
 
--- Parse the "SET" part in "UPDATE" statement
+-- SET part parser (for UPDATE)
 setParser :: Parser [String]
 setParser = do
   spaces
@@ -188,6 +260,7 @@ setParser = do
   updates <- sepBy1 singleUpdateParser (char ',')
   spaces
   return $ updates
+-- Parser for each SET attribute
 singleUpdateParser :: Parser String
 singleUpdateParser = do
   spaces
@@ -199,31 +272,10 @@ singleUpdateParser = do
   spaces
   return $ column ++ "=" ++ newValue
 
-
+-- Parser for case insensitive string
 -- Match the lowercase or uppercase form of 'c'
 caseInsensitiveChar c = char (toLower c) <|> char (toUpper c)
 -- Match the string 's', accepting either lowercase or uppercase form of each character 
 caseInsensitiveString s = try (mapM caseInsensitiveChar s) <?> "\"" ++ s ++ "\""
 
--- //////////////////////////// END OF PARSING
-
-
-loadFile :: TableName -> Execution FileContent
-loadFile name = liftF $ LoadFile name id
-
-getTime :: Execution UTCTime
-getTime = liftF $ GetTime id
-
-executeSql :: String -> Execution (Either ErrorMessage DataFrame)
-executeSql sql = do
-  case parseSql sql of
-    Left err -> return $ Left err
-    Right parsedStatement -> executeParsedStatement parsedStatement
-    
-  -- executeParsedStatement parsedStatement
-  -- return $ Left "implement me"
-
-executeParsedStatement :: ExecutionAlgebra () -> Execution (Either ErrorMessage DataFrame)
-executeParsedStatement statement = do
-  -- Implement the logic to execute the parsed statement and return a DataFrame
-  return $ Left $ "implement me" ++ "\nTried executing: " ++ show statement
+-- //////////////////////////// END OF PARSING ////////////////////////////
