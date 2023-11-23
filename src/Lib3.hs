@@ -12,8 +12,8 @@ import Lib2 (capitalize)
 
 import Control.Monad.Free (Free (..), liftF)
 import Data.Time (UTCTime)
-import DataFrame (DataFrame (DataFrame))
-import Text.Parsec
+import DataFrame (Column (..), ColumnType (..), Value (..), Row, DataFrame (..))
+import Text.Parsec hiding (Column)
 import Text.Parsec.String
 import Text.Parsec.Error (ParseError, errorMessages, messageString)
 import Data.Char
@@ -43,6 +43,7 @@ data ExecutionAlgebra next
   | GetTime (UTCTime -> next)
   -- feel free to add more constructors here
   | SaveFile TableName FileContent (FileContent -> next)
+  | SQLOperation (ParsedStatement -> next)
 
   deriving (Functor)
   
@@ -67,21 +68,49 @@ executeSql sql = do
   case parseSql sql of
     Left err -> return $ Left err
     Right parsedStatement -> executeParsedStatement parsedStatement
-  -- executeParsedStatement parsedStatement
-  -- return $ Left "implement me"
+
 
 executeParsedStatement :: ParsedStatement -> Execution (Either ErrorMessage DataFrame)
+executeParsedStatement (SelectStatement columns tableNames conditions) = do
+  return $ Left "Implement SELECT here!"
 executeParsedStatement (DeleteStatement tableName conditions) = do
-  return $ exampleDelete
-  where 
-    exampleDelete :: Either ErrorMessage DataFrame
-    exampleDelete = Right $ DataFrame [] []
+  return $ Left "Implement DELETE here!"
+executeParsedStatement (UpdateStatement tableName updates conditions) = do
+  return $ Left "Implement UPDATE here!"
+executeParsedStatement (InsertStatement tableName columns values) = do
+  return $ Left "Implement INSERT here!"
 
-executeParsedStatement statement = do
-  -- Implement the logic to execute the parsed statement and return a DataFrame
-  return $ Left $ "implement me" ++ "\nTried executing: " ++ show statement
+executeParsedStatement (ShowTableName tableName) = do
+  return $ Left "Implement SHOW TABLE 'name' here!"
+executeParsedStatement (ShowTables) = do
+  return $ Left "Implement SHOW TABLES here!"
+executeParsedStatement (ShowCurrentTime) = do
+  return $ Left "Implement NOW() here!"
+
+-- executeParsedStatement statement = do
+--   return $ Left $ "implement me" ++ "\nTried executing: " ++ show statement
 
 
+
+
+
+
+
+
+-- TEST DATA
+
+a = Column "a" IntegerType
+b = Column "b" IntegerType
+c = Column "c" StringType
+d = Column "d" BoolType
+row1 = [IntegerValue 5, IntegerValue 15, StringValue "ddddddddddd", BoolValue True]
+row2 :: [Value]
+row2 = [IntegerValue 10, IntegerValue 20, StringValue "no", BoolValue False]
+testData :: DataFrame
+testData = DataFrame [a, b, c, d] [row1, row2]
+
+
+--- /////////////////// FROM Main.hs ///////////////////
 -- RUN STEP
 -- Execution Instructions for each constructor
 -- LoadFile
@@ -116,7 +145,7 @@ runExecuteIO (Free step) = do
     next <- runStep step
     runExecuteIO next
 
-
+--- /////////////////// FROM Main.hs ///////////////////
 
 
 
