@@ -222,7 +222,7 @@ commaSepListParser = do
 identifierParser :: Parser String
 identifierParser = do
   spaces
-  items <- many1 (alphaNum <|> char '_') <|> (string "*")
+  items <- many1 (alphaNum <|> char '_' <|> char '.') <|> (string "*")
   spaces
   return items
 
