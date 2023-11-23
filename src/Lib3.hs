@@ -8,16 +8,29 @@ module Lib3
   )
 where
 
-import Lib2 (capitalize, parseStatement)
+import Lib2 (capitalize)
 
 import Control.Monad.Free (Free (..), liftF)
 import Data.Time (UTCTime)
-import DataFrame (DataFrame)
+import DataFrame (DataFrame (DataFrame))
 import Text.Parsec
 import Text.Parsec.String
 import Text.Parsec.Error (ParseError, errorMessages, messageString)
 import Data.Char
+import System.IO
 
+-- Keep the type, modify constructors
+data ParsedStatement
+  -- Condition = Condition(OR(int))
+  = SelectStatement [String] [TableName] [String] -- [Column] [Table] [Condition]
+  | DeleteStatement TableName [String] -- Table [Condition]
+  | UpdateStatement TableName [String] [String] -- Table [column=newValue] [Condition]
+  | InsertStatement TableName [String] [String] -- Table [Column] [Value]
+
+  | ShowTables
+  | ShowTableName String -- Table
+  | ShowCurrentTime -- NOW()
+  deriving (Show, Eq)
 
 type TableName = String
 
@@ -29,15 +42,7 @@ data ExecutionAlgebra next
   = LoadFile TableName (FileContent -> next)
   | GetTime (UTCTime -> next)
   -- feel free to add more constructors here
-  -- Condition = Condition(OR(int))
-  | SelectStatement [String] [String] [String] -- [Column] [Table] [Condition]
-  | DeleteStatement String [String] -- Table [Condition]
-  | UpdateStatement String [String] [String] -- Table [column=newValue] [Condition]
-  | InsertStatement String [String] [String] -- Table [Column] [Value]
-
-  | ShowTables
-  | ShowTableName String -- Table
-  | ShowCurrentTime -- NOW()
+  | SaveFile TableName FileContent (FileContent -> next)
 
   deriving (Functor)
   
@@ -45,13 +50,7 @@ data ExecutionAlgebra next
 instance Show (ExecutionAlgebra a) where
   show (LoadFile tableName _) = "LoadFile " ++ show tableName
   show (GetTime _) = "GetTime"
-  show (SelectStatement columns tables conditions) = "SelectStatement " ++ show columns ++ show tables ++ show conditions
-  show (DeleteStatement table conditions) = "DeleteStatement " ++ show table ++ show conditions
-  show (InsertStatement table updates conditions) = "InstertStatement " ++ show table ++ show updates ++ show conditions
-  show (UpdateStatement table columns conditions) = "UpdateStatement " ++ show table ++ show columns ++ show conditions
-  show (ShowTables) = "ShowTables"
-  show (ShowTableName table) = "ShowTableName " ++ show table
-  show (ShowCurrentTime) = "ShowCurrentTime"
+  show (SaveFile tableName _ _) = "SaveFile " ++ show tableName
 
 type Execution = Free ExecutionAlgebra
 
@@ -61,27 +60,61 @@ loadFile name = liftF $ LoadFile name id
 getTime :: Execution UTCTime
 getTime = liftF $ GetTime id
 
+
+-- !!! MAIN FUNCTION !!!
 executeSql :: String -> Execution (Either ErrorMessage DataFrame)
 executeSql sql = do
   case parseSql sql of
     Left err -> return $ Left err
     Right parsedStatement -> executeParsedStatement parsedStatement
-    
   -- executeParsedStatement parsedStatement
   -- return $ Left "implement me"
 
-executeParsedStatement :: ExecutionAlgebra () -> Execution (Either ErrorMessage DataFrame)
+executeParsedStatement :: ParsedStatement -> Execution (Either ErrorMessage DataFrame)
+executeParsedStatement (DeleteStatement tableName conditions) = do
+  return $ exampleDelete
+  where 
+    exampleDelete :: Either ErrorMessage DataFrame
+    exampleDelete = Right $ DataFrame [] []
+
 executeParsedStatement statement = do
   -- Implement the logic to execute the parsed statement and return a DataFrame
   return $ Left $ "implement me" ++ "\nTried executing: " ++ show statement
 
 
+-- RUN STEP
+-- Execution Instructions for each constructor
+-- LoadFile
+runStep :: Lib3.ExecutionAlgebra a -> IO a
+runStep (LoadFile tableName next) = do
+  putStrLn $ "Loaded file: " ++ tableName
+  fileContent <- readFile tableName 
+  return $ (next fileContent)
+-- SaveFile
+runStep (SaveFile tableName fileContent next) = do
+  putStrLn $ "Saved table: " ++ show tableName ++ " with content:" ++ "\n" ++ fileContent
+  writeFile tableName fileContent
+  return $ (next fileContent)
+-- DeleteStatement
 
 
 
+saveFile :: TableName -> FileContent -> Execution FileContent
+saveFile name content = liftF $ SaveFile name content id 
 
+exampleExecution :: Execution ()
+exampleExecution = do
+  fileContent <- loadFile "db/example.txt" 
+  -- deletedContent <- deleteStatement "db/"
+  savedFile <- saveFile "db/example.txt" (fileContent++"a")
+  return $ ()
+  -- liftF $ SaveFile "testTable" "|||example|||file|||content|||" (\_ -> ())
 
-
+runExecuteIO :: Lib3.Execution r -> IO r
+runExecuteIO (Pure r) = return r
+runExecuteIO (Free step) = do
+    next <- runStep step
+    runExecuteIO next
 
 
 
@@ -92,19 +125,19 @@ executeParsedStatement statement = do
 -- //////////////////////////// PARSING ////////////////////////////
 
 -- String to SQL statement parser(takes string and returns error or the corresponding sql statement constructor)
-parseSql :: String -> Either ErrorMessage (ExecutionAlgebra ())
+parseSql :: String -> Either ErrorMessage (ParsedStatement)
 parseSql input = case parse sqlParser "" input of
   Left err -> Left $ "Parse error at " ++ show err
   Right result -> Right result
 
 -- SQL statement parser (parses all statements)
-sqlParser :: Parser (ExecutionAlgebra ()) 
+sqlParser :: Parser ParsedStatement
 sqlParser = do
   spaces
   choice [selectParser, deleteParser, insertParser, updateParser, try showTablesParser <|> showTableNameParser, nowParser] 
 
 -- SELECT statement parser
-selectParser :: Parser (ExecutionAlgebra ())
+selectParser :: Parser ParsedStatement
 selectParser = do
   spaces
   caseInsensitiveString "SELECT"
@@ -120,7 +153,7 @@ selectParser = do
   return $ SelectStatement columns tables conditions
 
 -- DELETE statement parser
-deleteParser :: Parser (ExecutionAlgebra ())
+deleteParser :: Parser ParsedStatement
 deleteParser = do
   spaces
   caseInsensitiveString "DELETE"
@@ -135,7 +168,7 @@ deleteParser = do
   return $ DeleteStatement table conditions
 
 -- INSERT statement parser
-insertParser :: Parser (ExecutionAlgebra ())
+insertParser :: Parser ParsedStatement
 insertParser = do
   spaces
   caseInsensitiveString "INSERT"
@@ -164,7 +197,7 @@ insertParser = do
         return values
 
 -- UPDATE statement parser
-updateParser :: Parser (ExecutionAlgebra ())
+updateParser :: Parser ParsedStatement
 updateParser = do
   spaces
   caseInsensitiveString "UPDATE"
@@ -177,7 +210,7 @@ updateParser = do
   return $ UpdateStatement table updates conditions
 
 -- NOW() statement parser
-nowParser :: Parser (ExecutionAlgebra ())
+nowParser :: Parser ParsedStatement
 nowParser = do
   spaces
   caseInsensitiveString "NOW()"
@@ -186,7 +219,7 @@ nowParser = do
   return $ ShowCurrentTime
 
 -- SHOW TABLES statement parser
-showTablesParser :: Parser (ExecutionAlgebra ())
+showTablesParser :: Parser ParsedStatement
 showTablesParser = do
   spaces
   caseInsensitiveString "SHOW"
@@ -197,7 +230,7 @@ showTablesParser = do
   return ShowTables
 
 -- SHOW TABLE name statement parser
-showTableNameParser :: Parser (ExecutionAlgebra ())
+showTableNameParser :: Parser ParsedStatement
 showTableNameParser = do
   spaces
   caseInsensitiveString "SHOW"
