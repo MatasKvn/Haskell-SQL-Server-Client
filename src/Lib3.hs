@@ -5,6 +5,7 @@ module Lib3
   ( executeSql,
     Execution,
     ExecutionAlgebra (..),
+    runStep,
   )
 where
 
@@ -12,12 +13,18 @@ import Lib2 (capitalize)
 
 import Control.Monad.Free (Free (..), liftF)
 import Data.Time (UTCTime)
+import Data.Time.Clock (getCurrentTime)
+import Data.Time.Format (formatTime, defaultTimeLocale)
 import DataFrame (Column (..), ColumnType (..), Value (..), Row, DataFrame (..))
 import Text.Parsec hiding (Column)
 import Text.Parsec.String
 import Text.Parsec.Error (ParseError, errorMessages, messageString)
 import Data.Char
 import System.IO
+import qualified Lib1
+import Lib2 (showTables, showTableByName)
+import Control.Exception (handle, IOException)
+
 
 -- Keep the type, modify constructors
 data ParsedStatement
@@ -43,7 +50,6 @@ data ExecutionAlgebra next
   | GetTime (UTCTime -> next)
   -- feel free to add more constructors here
   | SaveFile TableName FileContent (FileContent -> next)
-  | SQLOperation (ParsedStatement -> next)
 
   deriving (Functor)
   
@@ -61,34 +67,122 @@ loadFile name = liftF $ LoadFile name id
 getTime :: Execution UTCTime
 getTime = liftF $ GetTime id
 
+saveFile :: TableName -> FileContent -> Execution FileContent
+saveFile name content = liftF $ SaveFile name content id 
 
--- !!! MAIN FUNCTION !!!
+
+
+
+
+
+
+
+
+-- /////////////////////// !!! MAIN(original) FUNCTION !!! ///////////////////////
 executeSql :: String -> Execution (Either ErrorMessage DataFrame)
 executeSql sql = do
   case parseSql sql of
     Left err -> return $ Left err
     Right parsedStatement -> executeParsedStatement parsedStatement
 
-
+-- /////////////////////// !!! PARSED STATEMENT EXECUTION !!! ///////////////////////
 executeParsedStatement :: ParsedStatement -> Execution (Either ErrorMessage DataFrame)
+-- SELECT 
 executeParsedStatement (SelectStatement columns tableNames conditions) = do
-  return $ Left "Implement SELECT here!"
+  fileContent <- loadFile "db/example.txt" 
+  let selectedDataFrame = (DataFrame [Column "SELECT statement" StringType] [ [StringValue "Not implemented"] ])
+  return $ Right selectedDataFrame
+-- DELETE (cia)
 executeParsedStatement (DeleteStatement tableName conditions) = do
-  return $ Left "Implement DELETE here!"
+  fileContent <- loadFile "db/example.txt" -- failo nuskaitymas is tikruju vyksta: runStep (LoadFile tableName next)
+  -- pakeist kad skaitytu atitinkamu lenteliu failus (.txt tik pavyzdziui, turi buti JSON)
+
+  -- padaryt kad parsintu is JSONo i DataFrame
+  let parsedDataFrame = DataFrame [Column "DELETE statement" StringType] [ [StringValue "Not implemented"] ]
+
+  -- pritaikyti "DELETE" statementa
+  let modifiedDataFrame = parsedDataFrame
+
+  -- parsinti DataFrame i JSONa
+  let modifiedfileContent = "DELETE statement" 
+
+  -- saugoti isparsinta JSON texta i atitinkama faila
+  savedFile <- saveFile "db/example.txt" (modifiedfileContent) -- failo rasymas vyksta: runStep (SaveFile tableName fileContent next)
+
+  -- Grazinam modifikuota DataFrame isspausdinimui
+  return $ Right modifiedDataFrame -- return modified dataFrame to print in console
+-- UPDATE
 executeParsedStatement (UpdateStatement tableName updates conditions) = do
-  return $ Left "Implement UPDATE here!"
+  fileContent <- loadFile "db/example.txt"
+  let modifiedDataFrame = (DataFrame [Column "UPDATE statement" StringType] [ [StringValue "Not implemented"] ])
+  let modifiedfileContent = "UPDATE statement"
+  savedFileContent <- saveFile "db/example.txt" (modifiedfileContent)
+  return $ Right modifiedDataFrame
+-- INSERT
 executeParsedStatement (InsertStatement tableName columns values) = do
-  return $ Left "Implement INSERT here!"
+  fileContent <- loadFile "db/example.txt"
+  let modifiedDataFrame = (DataFrame [Column "INSERT statement" StringType] [ [StringValue "Not implemented"] ])
+  let modifiedfileContent = "INSERT statement"
+  savedFileContent <- saveFile "db/example.txt" (modifiedfileContent)
+  return $ Right modifiedDataFrame
 
+-- SHOW TABLES
 executeParsedStatement (ShowTableName tableName) = do
-  return $ Left "Implement SHOW TABLE 'name' here!"
+  return $ (Lib2.showTableByName tableName)
 executeParsedStatement (ShowTables) = do
-  return $ Left "Implement SHOW TABLES here!"
+  return $ Right Lib2.showTables
+-- NOW()
 executeParsedStatement (ShowCurrentTime) = do
-  return $ Left "Implement NOW() here!"
+  currentTime <- getTime
+  let formattedTime = formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" currentTime
+  let dataFrameWithTime = DataFrame [Column formattedTime StringType] []
+  return $ Right dataFrameWithTime
 
--- executeParsedStatement statement = do
---   return $ Left $ "implement me" ++ "\nTried executing: " ++ show statement
+executeParsedStatement a = do
+  return $ Left ("Constructor: " ++ show a ++ " is not supported.")
+
+
+
+
+--- /////////////////// FROM Main.hs ///////////////////
+
+-- BASICALLY THE cmd FUNCTION FROM (Main.hs) (for testing)
+f :: String -> IO (Either String String)
+f statement = do
+  df <- runExecuteIO $ Lib3.executeSql statement 
+  return $ Lib1.renderDataFrameAsTable 100 <$> df
+
+-- RUN STEP
+-- Execution Instructions for each ExecutionAlgebra constructor
+-- LoadFile
+runStep :: Lib3.ExecutionAlgebra a -> IO a
+runStep (LoadFile tableName next) = do
+  putStrLn $ "Loaded file: " ++ tableName
+  fileContent <- withFile tableName ReadMode hGetContents
+  return $ next fileContent
+-- SaveFile
+runStep (SaveFile tableName fileContent next) =  do
+  putStrLn $ "Saved table: " ++ show tableName ++ " with content:" ++ "\n" ++ fileContent
+  withFile tableName WriteMode (\handle -> hPutStr handle fileContent)
+  return $ next fileContent
+runStep (Lib3.GetTime next) = getCurrentTime >>= return . next
+
+
+runExecuteIO :: Lib3.Execution r -> IO r
+runExecuteIO (Pure r) = return r
+runExecuteIO (Free step) = do
+    next <- runStep step
+    runExecuteIO next
+
+--- /////////////////// FROM Main.hs ///////////////////
+-- /////////////////////// !!! PARSED STATEMENT EXECUTION !!! ///////////////////////
+
+
+
+
+
+
+
 
 
 
@@ -110,42 +204,17 @@ testData :: DataFrame
 testData = DataFrame [a, b, c, d] [row1, row2]
 
 
---- /////////////////// FROM Main.hs ///////////////////
--- RUN STEP
--- Execution Instructions for each constructor
--- LoadFile
-runStep :: Lib3.ExecutionAlgebra a -> IO a
-runStep (LoadFile tableName next) = do
-  putStrLn $ "Loaded file: " ++ tableName
-  fileContent <- readFile tableName 
-  return $ (next fileContent)
--- SaveFile
-runStep (SaveFile tableName fileContent next) = do
-  putStrLn $ "Saved table: " ++ show tableName ++ " with content:" ++ "\n" ++ fileContent
-  writeFile tableName fileContent
-  return $ (next fileContent)
--- DeleteStatement
 
 
 
-saveFile :: TableName -> FileContent -> Execution FileContent
-saveFile name content = liftF $ SaveFile name content id 
 
-exampleExecution :: Execution ()
-exampleExecution = do
-  fileContent <- loadFile "db/example.txt" 
-  -- deletedContent <- deleteStatement "db/"
-  savedFile <- saveFile "db/example.txt" (fileContent++"a")
-  return $ ()
-  -- liftF $ SaveFile "testTable" "|||example|||file|||content|||" (\_ -> ())
 
-runExecuteIO :: Lib3.Execution r -> IO r
-runExecuteIO (Pure r) = return r
-runExecuteIO (Free step) = do
-    next <- runStep step
-    runExecuteIO next
 
---- /////////////////// FROM Main.hs ///////////////////
+
+
+
+
+
 
 
 
@@ -341,3 +410,18 @@ caseInsensitiveChar c = char (toLower c) <|> char (toUpper c)
 caseInsensitiveString s = try (mapM caseInsensitiveChar s) <?> "\"" ++ s ++ "\""
 
 -- //////////////////////////// END OF PARSING ////////////////////////////
+
+
+
+
+-- Redundant code
+
+deleteExecution :: ParsedStatement -> Execution (Either ErrorMessage DataFrame)
+deleteExecution (DeleteStatement tableName conditions) = do
+  -- Read & Parse JSON here
+  fileContent <- loadFile "db/example.txt" 
+  -- Delete here
+  let modifiedfileContent = if null fileContent then [] else tail fileContent -- example
+  -- Encode to JSON & write
+  savedFile <- saveFile "db/example.txt" (modifiedfileContent)
+  return $ Right (DataFrame [] []) -- return modified dataFrame to print in console
