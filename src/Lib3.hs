@@ -5,7 +5,6 @@ module Lib3
   ( executeSql,
     Execution,
     ExecutionAlgebra (..),
-    runStep,
     runExecuteIO,
     isTestEnv,
   )
@@ -24,9 +23,10 @@ import Text.Parsec.Error (ParseError, errorMessages, messageString)
 import Data.Char
 import System.IO
 import qualified Lib1
-import Lib2 (showTables, showTableByName)
+import Lib2 (showTables, showTableByName, getTable)
 import Control.Exception (handle, IOException)
 import System.Environment
+import InMemoryTables (database)
 
 
 
@@ -156,28 +156,66 @@ f statement = do
   df <- runExecuteIO $ Lib3.executeSql statement 
   return $ Lib1.renderDataFrameAsTable 100 <$> df
 
--- RUN STEP
--- Execution Instructions for each ExecutionAlgebra constructor
--- LoadFile
-runStep :: Lib3.ExecutionAlgebra a -> IO a
-runStep (LoadFile tableName next) = do
-  putStrLn $ "Loaded file: " ++ tableName
-  fileContent <- withFile tableName ReadMode hGetContents
-  return $ next fileContent
--- SaveFile
-runStep (SaveFile tableName fileContent next) = do
-  putStrLn $ "Saved table: " ++ show tableName ++ " with content:" ++ "\n" ++ fileContent
-  withFile tableName WriteMode (\handle -> hPutStr handle fileContent)
-  return $ next fileContent
-runStep (Lib3.GetTime next) = getCurrentTime >>= return . next
 
 
 runExecuteIO :: Lib3.Execution r -> IO r
-runExecuteIO (Pure r) = return r
-runExecuteIO (Free step) = do
+runExecuteIO execution = do 
+  isTest <- isTestEnv
+  if isTest then testInterpreter execution
+  else productionInterpreter execution
+
+
+-- PRODUCTION INTERPRETER
+productionInterpreter :: Lib3.Execution r -> IO r
+productionInterpreter (Pure r) = return r
+productionInterpreter (Free step) = do
   next <- runStep step
-  runExecuteIO next
-    where runStep = Lib3.runStep
+  productionInterpreter next
+    where 
+      -- LoadFile
+      runStep :: Lib3.ExecutionAlgebra a -> IO a
+      runStep (LoadFile tableName next) = do 
+        putStrLn $ "LoadFile: " ++ tableName
+        fileContent <- withFile tableName ReadMode hGetContents
+        return $ next fileContent
+      -- SaveFile
+      runStep (SaveFile tableName fileContent next) = do
+        putStrLn $ "SaveTable: " ++ show tableName ++ " with content:" ++ "\n" ++ fileContent
+        withFile tableName WriteMode (\handle -> hPutStr handle fileContent)
+        return $ next fileContent
+      runStep (Lib3.GetTime next) = getCurrentTime >>= return . next
+
+
+
+
+-- TEST INTERPRETER
+testInterpreter :: Lib3.Execution r -> IO r
+testInterpreter (Pure r) = return r
+testInterpreter (Free step) = do
+  next <- runStepTEST step
+  testInterpreter next
+    where
+      -- LoadFile
+      runStepTEST :: Lib3.ExecutionAlgebra a -> IO a
+      runStepTEST (LoadFile tableName next) = do 
+        putStrLn $ "TEST: LoadFile: " ++ tableName
+        case getTable database tableName of 
+          Just dFrame -> return $ next (show dFrame) -- into JSON and return
+          Nothing -> return $ next ""
+      -- SaveFile
+      runStepTEST (SaveFile tableName fileContent next) = do
+        putStrLn $ "TEST: SaveTable: " ++ show tableName ++ " with content:" ++ "\n" ++ fileContent
+        case getTable database tableName of 
+          Just dFrame -> return $ next (show dFrame) -- from JSON and return
+          Nothing -> return $ next ""
+      runStepTEST (Lib3.GetTime next) = getCurrentTime >>= return . next
+
+
+
+
+
+
+
 
 --- /////////////////// FROM Main.hs ///////////////////
 -- /////////////////////// !!! PARSED STATEMENT EXECUTION !!! ///////////////////////
