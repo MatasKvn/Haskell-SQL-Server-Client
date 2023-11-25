@@ -6,6 +6,8 @@ module Lib3
     Execution,
     ExecutionAlgebra (..),
     runStep,
+    runExecuteIO,
+    isTestEnv,
   )
 where
 
@@ -24,6 +26,8 @@ import System.IO
 import qualified Lib1
 import Lib2 (showTables, showTableByName)
 import Control.Exception (handle, IOException)
+import System.Environment
+
 
 
 -- Keep the type, modify constructors
@@ -161,7 +165,7 @@ runStep (LoadFile tableName next) = do
   fileContent <- withFile tableName ReadMode hGetContents
   return $ next fileContent
 -- SaveFile
-runStep (SaveFile tableName fileContent next) =  do
+runStep (SaveFile tableName fileContent next) = do
   putStrLn $ "Saved table: " ++ show tableName ++ " with content:" ++ "\n" ++ fileContent
   withFile tableName WriteMode (\handle -> hPutStr handle fileContent)
   return $ next fileContent
@@ -171,15 +175,22 @@ runStep (Lib3.GetTime next) = getCurrentTime >>= return . next
 runExecuteIO :: Lib3.Execution r -> IO r
 runExecuteIO (Pure r) = return r
 runExecuteIO (Free step) = do
-    next <- runStep step
-    runExecuteIO next
+  next <- runStep step
+  runExecuteIO next
+    where runStep = Lib3.runStep
 
 --- /////////////////// FROM Main.hs ///////////////////
 -- /////////////////////// !!! PARSED STATEMENT EXECUTION !!! ///////////////////////
 
-
-
-
+-- CHECKS IF CURRENTLY TESTING
+isTestEnv :: IO Bool
+isTestEnv = do
+  isTesting <- lookupEnv "ENVIRONMENT_TEST"
+  case isTesting of
+    Just _ -> do
+      return True
+    Nothing -> do
+      return False
 
 
 

@@ -17,6 +17,17 @@ import System.Console.Repline
     evalRepl,
   )
 import System.Console.Terminal.Size (Window, size, width)
+import System.Environment
+
+isTestEnv :: IO Bool
+isTestEnv = do
+  isTesting <- lookupEnv "TESTING"
+  case isTesting of
+    Just _ -> do
+      return True
+    Nothing -> do
+      return False
+
 
 type Repl a = HaskelineT IO a
 
@@ -54,17 +65,19 @@ cmd c = do
       return $ Lib1.renderDataFrameAsTable s <$> df
 
 main :: IO ()
-main =
+main = do
+  unsetEnv "ENVIRONMENT_TEST"
   evalRepl (const $ pure ">>> ") cmd [] Nothing Nothing (Word completer) ini final
 
 runExecuteIO :: Lib3.Execution r -> IO r
-runExecuteIO (Pure r) = return r
-runExecuteIO (Free step) = do
-    next <- runStep step
-    runExecuteIO next
-    -- where
-    --     -- probably you will want to extend the interpreter
-    --     runStep :: Lib3.ExecutionAlgebra a -> IO a
-    --     runStep (Lib3.GetTime next) = getCurrentTime >>= return . next
+runExecuteIO = Lib3.runExecuteIO
+-- runExecuteIO (Pure r) = return r
+-- runExecuteIO (Free step) = do
+--     next <- runStep step
+--     runExecuteIO next
+--     where
+--       runStep = Lib3.runStep
+--     --     -- probably you will want to extend the interpreter
+--     --     runStep :: Lib3.ExecutionAlgebra a -> IO a
+--     --     runStep (Lib3.GetTime next) = getCurrentTime >>= return . next
 
-runStep = Lib3.runStep
