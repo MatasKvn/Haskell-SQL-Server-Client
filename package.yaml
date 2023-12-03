@@ -87,6 +87,7 @@ executables:
     - free
     - time
     - parsec   # Add this line for parsec
+    - aeson    # Aeson
 
 tests:
   fp2023-test:
@@ -100,3 +101,4 @@ tests:
     - fp2023
     - hspec
     - parsec   # Add this line for parsec
+    - aeson    # Aeson
