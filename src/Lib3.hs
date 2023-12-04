@@ -211,16 +211,16 @@ productionInterpreter (Free step) = do
       -- LoadFile
       runStep :: Lib3.ExecutionAlgebra a -> IO a
       runStep (LoadFile tableName next) = do 
-        putStrLn $ "LoadFile: " ++ ("db/" ++ tableName ++ ".json")
+        -- putStrLn $ "LoadFile: " ++ ("db/" ++ tableName ++ ".json")
         fileContent <- readFile ("db/" ++ tableName ++ ".json")
         case jsonToDataframe fileContent of 
           Just dFrame -> return $ next (Right dFrame)
           Nothing -> return $ next (Left $ "Could not load table \"" ++ tableName ++ "\"")
       -- LoadFileMultiple
       runStep (LoadFileMultiple tableNames next) = do 
-        putStrLn $ "Opening multiple files: " ++ show tableNames
+        -- putStrLn $ "Opening multiple files: " ++ show tableNames
         jsons <- readMultipleJSONFiles tableNames
-        case jsonListToDataFrame jsons of
+        case jsonListToDataFrameList jsons of
           Left err -> return $ next (Left err)
           Right dFrames -> do
             let bigDFrame = connectTables dFrames
@@ -230,7 +230,7 @@ productionInterpreter (Free step) = do
       -- SaveFile
       runStep (SaveFile tableName dFrame next) = do
         let fileContent = dataframeToJson dFrame
-        putStrLn $ "SaveTable: " ++ show tableName ++ " with content:" ++ "\n" ++ show dFrame
+        -- putStrLn $ "SaveTable: " ++ show tableName ++ " with content:" ++ "\n" ++ show dFrame
         withFile ("db/" ++ tableName ++ ".json") WriteMode (\handle -> hPutStr handle fileContent)
         return $ next (Right dFrame)
       runStep execution = runStepSHARED execution
@@ -254,13 +254,13 @@ readMultipleJSONFiles (x : xs) = do
   return $ fileContent : rest
 
 -- Parse a list of jsons to a list of DataFrames
-jsonListToDataFrame :: [String] -> Either ErrorMessage [DataFrame]
-jsonListToDataFrame [] = Right []
-jsonListToDataFrame (x : xs) = 
+jsonListToDataFrameList :: [String] -> Either ErrorMessage [DataFrame]
+jsonListToDataFrameList [] = Right []
+jsonListToDataFrameList (x : xs) = 
   case jsonToDataframe x of 
     Just dFrame -> do 
       -- rest <- 
-      case jsonListToDataFrame xs of 
+      case jsonListToDataFrameList xs of 
         Right rest' -> 
           return $  (dFrame : rest')
         Left err -> Left err
@@ -281,7 +281,7 @@ testInterpreter (Free step) = do
       -- LoadFile
       runStepTEST :: Lib3.ExecutionAlgebra a -> IO a
       runStepTEST (LoadFile tableName next) = do 
-        putStrLn $ "TEST: LoadFile: " ++ tableName
+        -- putStrLn $ "TEST: LoadFile: " ++ tableName
         case getTable database tableName of 
           Just dFrame -> return $ next (Right dFrame) -- into JSON and return
           Nothing -> return $ next (Left $ "Table " ++ tableName ++ " not found.")
@@ -295,7 +295,7 @@ testInterpreter (Free step) = do
             return $ next $ Right bigDFrame
       -- SaveFile
       runStepTEST (SaveFile tableName dFrame next) = do
-        putStrLn $ "TEST: SaveTable: " ++ show tableName ++ " with content:" ++ "\n" ++ show dFrame
+        -- putStrLn $ "TEST: SaveTable: " ++ show tableName ++ " with content:" ++ "\n" ++ show dFrame
         case getTable database tableName of 
           Just dFrame -> return $ next (Right dFrame) -- from JSON and return
           Nothing -> return $ next (Left $ "Could not save table \"" ++ tableName ++ "\"")
