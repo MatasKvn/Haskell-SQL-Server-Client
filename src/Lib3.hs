@@ -1,5 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 module Lib3
   ( executeSql,
@@ -17,18 +19,33 @@ import Data.Time (UTCTime)
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (formatTime, defaultTimeLocale)
 import DataFrame (Column (..), ColumnType (..), Value (..), Row, DataFrame (..))
-import Text.Parsec hiding (Column)
-import Text.Parsec.String
-import Text.Parsec.Error (ParseError, errorMessages, messageString)
-import Data.Char
+import Text.Parsec
+    ( alphaNum,
+      char,
+      space,
+      spaces,
+      string,
+      choice,
+      many1,
+      option,
+      sepBy1,
+      (<?>),
+      -- (<|>),
+      parse,
+      try )
+import Text.Parsec.String ( Parser )
+import Data.Char ( toLower, toUpper )
 import System.IO
 import qualified Lib1
 import Lib2 (showTables, showTableByName, getTable)
 import Control.Exception (handle, IOException)
 import System.Environment
 import InMemoryTables (database)
-
-
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import qualified Data.ByteString.Lazy.Char8 as BSL
+import Data.Aeson as A hiding (Value)
+import Control.Applicative ((<|>))
 
 -- Keep the type, modify constructors
 data ParsedStatement
@@ -50,10 +67,10 @@ type FileContent = String
 type ErrorMessage = String
 
 data ExecutionAlgebra next
-  = LoadFile TableName (FileContent -> next)
+  = LoadFile TableName ((Either ErrorMessage DataFrame) -> next)
   | GetTime (UTCTime -> next)
   -- feel free to add more constructors here
-  | SaveFile TableName FileContent (FileContent -> next)
+  | SaveFile TableName DataFrame ((Either ErrorMessage DataFrame) -> next)
 
   deriving (Functor)
   
@@ -63,15 +80,17 @@ instance Show (ExecutionAlgebra a) where
   show (GetTime _) = "GetTime"
   show (SaveFile tableName _ _) = "SaveFile " ++ show tableName
 
-type Execution = Free ExecutionAlgebra
+type Execution = Free ExecutionAlgebra 
 
-loadFile :: TableName -> Execution FileContent
+
+
+loadFile :: TableName -> Execution (Either ErrorMessage DataFrame)
 loadFile name = liftF $ LoadFile name id
 
 getTime :: Execution UTCTime
 getTime = liftF $ GetTime id
 
-saveFile :: TableName -> FileContent -> Execution FileContent
+saveFile :: TableName -> DataFrame -> Execution (Either ErrorMessage DataFrame)
 saveFile name content = liftF $ SaveFile name content id 
 
 
@@ -93,42 +112,43 @@ executeSql sql = do
 executeParsedStatement :: ParsedStatement -> Execution (Either ErrorMessage DataFrame)
 -- SELECT 
 executeParsedStatement (SelectStatement columns tableNames conditions) = do
-  fileContent <- loadFile "db/example.txt" 
-  let selectedDataFrame = (DataFrame [Column "SELECT statement" StringType] [ [StringValue "Not implemented"] ])
-  return $ Right selectedDataFrame
+  dFrame <- loadFile "example"
+  return $ dFrame
+  -- let selectedDataFrame = (DataFrame [Column "SELECT statement" StringType] [ [StringValue "Not implemented"] ])
+  
+
+  -- return $ Right selectedDataFrame
 -- DELETE (cia)
 executeParsedStatement (DeleteStatement tableName conditions) = do
-  fileContent <- loadFile "db/example.txt" -- failo nuskaitymas is tikruju vyksta: runStep (LoadFile tableName next)
-  -- pakeist kad skaitytu atitinkamu lenteliu failus (.txt tik pavyzdziui, turi buti JSON)
+  let tableName = "example" -- TEMP
+  dFrame <- loadFile tableName
+  case dFrame of 
+    Right dFrame -> do
+      let modifiedDataFrame = dFrame -- DELETE
+      savedFile <- saveFile tableName (modifiedDataFrame) -- failo rasymas vyksta: runStep (SaveFile tableName fileContent next)
+      return $ Right modifiedDataFrame 
+    Left err -> return $ Left err
 
-  -- padaryt kad parsintu is JSONo i DataFrame
-  let parsedDataFrame = DataFrame [Column "DELETE statement" StringType] [ [StringValue "Not implemented"] ]
-
-  -- pritaikyti "DELETE" statementa
-  let modifiedDataFrame = parsedDataFrame
-
-  -- parsinti DataFrame i JSONa
-  let modifiedfileContent = "DELETE statement" 
-
-  -- saugoti isparsinta JSON texta i atitinkama faila
-  savedFile <- saveFile "db/example.txt" (modifiedfileContent) -- failo rasymas vyksta: runStep (SaveFile tableName fileContent next)
-
-  -- Grazinam modifikuota DataFrame isspausdinimui
-  return $ Right modifiedDataFrame -- return modified dataFrame to print in console
 -- UPDATE
 executeParsedStatement (UpdateStatement tableName updates conditions) = do
-  fileContent <- loadFile "db/example.txt"
-  let modifiedDataFrame = (DataFrame [Column "UPDATE statement" StringType] [ [StringValue "Not implemented"] ])
-  let modifiedfileContent = "UPDATE statement"
-  savedFileContent <- saveFile "db/example.txt" (modifiedfileContent)
-  return $ Right modifiedDataFrame
+  let tableName = "example" -- TEMP
+  dFrame <- loadFile tableName
+  case dFrame of 
+    Right dFrame -> do
+      let modifiedDataFrame = dFrame -- UPDATE
+      savedFile <- saveFile tableName (modifiedDataFrame) -- failo rasymas vyksta: runStep (SaveFile tableName fileContent next)
+      return $ Right modifiedDataFrame 
+    Left err -> return $ Left err
 -- INSERT
 executeParsedStatement (InsertStatement tableName columns values) = do
-  fileContent <- loadFile "db/example.txt"
-  let modifiedDataFrame = (DataFrame [Column "INSERT statement" StringType] [ [StringValue "Not implemented"] ])
-  let modifiedfileContent = "INSERT statement"
-  savedFileContent <- saveFile "db/example.txt" (modifiedfileContent)
-  return $ Right modifiedDataFrame
+  let tableName = "example" -- TEMP
+  dFrame <- loadFile tableName
+  case dFrame of 
+    Right dFrame -> do
+      let modifiedDataFrame = dFrame -- INSERT
+      savedFile <- saveFile tableName (modifiedDataFrame) -- failo rasymas vyksta: runStep (SaveFile tableName fileContent next)
+      return $ Right modifiedDataFrame 
+    Left err -> return $ Left err
 
 -- SHOW TABLES
 executeParsedStatement (ShowTableName tableName) = do
@@ -165,6 +185,9 @@ runExecuteIO execution = do
   else productionInterpreter execution
 
 
+runStepSHARED :: Lib3.ExecutionAlgebra r -> IO r
+runStepSHARED (Lib3.GetTime next) = getCurrentTime >>= return . next
+
 -- PRODUCTION INTERPRETER
 productionInterpreter :: Lib3.Execution r -> IO r
 productionInterpreter (Pure r) = return r
@@ -175,15 +198,18 @@ productionInterpreter (Free step) = do
       -- LoadFile
       runStep :: Lib3.ExecutionAlgebra a -> IO a
       runStep (LoadFile tableName next) = do 
-        putStrLn $ "LoadFile: " ++ tableName
-        fileContent <- withFile tableName ReadMode hGetContents
-        return $ next fileContent
+        putStrLn $ "LoadFile: " ++ ("db/" ++ tableName ++ ".json")
+        fileContent <- readFile ("db/" ++ tableName ++ ".json")
+        case jsonToDataframe fileContent of 
+          Just dFrame -> return $ next (Right dFrame)
+          Nothing -> return $ next (Left $ "Could not load table \"" ++ tableName ++ "\"")
       -- SaveFile
-      runStep (SaveFile tableName fileContent next) = do
-        putStrLn $ "SaveTable: " ++ show tableName ++ " with content:" ++ "\n" ++ fileContent
-        withFile tableName WriteMode (\handle -> hPutStr handle fileContent)
-        return $ next fileContent
-      runStep (Lib3.GetTime next) = getCurrentTime >>= return . next
+      runStep (SaveFile tableName dFrame next) = do
+        let fileContent = dataframeToJson dFrame
+        putStrLn $ "SaveTable: " ++ show tableName ++ " with content:" ++ "\n" ++ show dFrame
+        withFile ("db/" ++ tableName ++ ".json") WriteMode (\handle -> hPutStr handle fileContent)
+        return $ next (Right dFrame)
+      runStep execution = runStepSHARED execution
 
 
 
@@ -200,15 +226,15 @@ testInterpreter (Free step) = do
       runStepTEST (LoadFile tableName next) = do 
         putStrLn $ "TEST: LoadFile: " ++ tableName
         case getTable database tableName of 
-          Just dFrame -> return $ next (show dFrame) -- into JSON and return
-          Nothing -> return $ next ""
+          Just dFrame -> return $ next (Right dFrame) -- into JSON and return
+          Nothing -> return $ next (Left $ "Table " ++ tableName ++ " not found.")
       -- SaveFile
-      runStepTEST (SaveFile tableName fileContent next) = do
-        putStrLn $ "TEST: SaveTable: " ++ show tableName ++ " with content:" ++ "\n" ++ fileContent
+      runStepTEST (SaveFile tableName dFrame next) = do
+        putStrLn $ "TEST: SaveTable: " ++ show tableName ++ " with content:" ++ "\n" ++ show dFrame
         case getTable database tableName of 
-          Just dFrame -> return $ next (show dFrame) -- from JSON and return
-          Nothing -> return $ next ""
-      runStepTEST (Lib3.GetTime next) = getCurrentTime >>= return . next
+          Just dFrame -> return $ next (Right dFrame) -- from JSON and return
+          Nothing -> return $ next (Left $ "Could not save table \"" ++ tableName ++ "\"")
+      runStepTEST execution = runStepSHARED execution
 
 
 
@@ -253,21 +279,78 @@ testData :: DataFrame
 testData = DataFrame [a, b, c, d] [row1, row2]
 
 
+-- //////////////////////////// WRITE/READ JSON ////////////////////////////
+
+instance FromJSON ColumnType where
+  parseJSON (String "IntegerType") = return IntegerType
+  parseJSON (String "StringType")  = return StringType
+  parseJSON (String "BoolType")    = return BoolType
+  parseJSON _                   = fail "Invalid ColumnType"
+
+instance FromJSON Column where
+  parseJSON (Object v) = do
+    name <- v .: "name"
+    colType <- v .: "type"
+    return $ Column name colType
+  parseJSON _ = fail "Invalid Column"
+
+instance FromJSON Value where
+  parseJSON (Object v) = IntegerValue <$> v .: "IntegerValue"
+    <|> (StringValue <$> v .: "StringValue")
+    <|> (BoolValue <$> v .: "BoolValue")
+    <|> pure NullValue
+  parseJSON _ = fail "Failed to parse Value"
+
+instance FromJSON DataFrame where
+  parseJSON (Object v) = do
+    columns <- v .: "columns"
+    rows <- v .: "rows"
+    return $ DataFrame columns rows
+  parseJSON _ = fail "Invalid DataFrame"
 
 
+jsonToDataframe :: String -> Maybe DataFrame
+jsonToDataframe jsonData = decode (BSL.fromStrict $ TE.encodeUtf8 $ T.pack jsonData)
+
+writeToTestFile :: DataFrame -> IO()
+writeToTestFile dataframe = writeFile "db/jsonTesting.json" (dataframeToJson dataframe)
+
+--DATAFRAME WRITING
+dataframeToJson :: DataFrame -> String
+dataframeToJson (DataFrame columns rows) = "{\"columns\": " ++ columnsToJsonStart columns ++ ", \"rows\": " ++ rowsToJsonStart rows ++ "}"
 
 
+--COLUMN WRITING
+columnToJson :: Column -> String
+columnToJson (Column name colType) = "{\"name\": " ++ show name ++ ", \"type\": " ++ show (show colType) ++ "}"
 
+columnsToJsonStart :: [Column] -> String
+columnsToJsonStart (x:xs) = "[" ++ columnToJson x ++ columnsToJson xs ++ "]"
 
+columnsToJson :: [Column] -> String
+columnsToJson (x:xs) = ", " ++ columnToJson x ++ columnsToJson xs
+columnsToJson [] = ""
 
+--ROW WRITING
+rowsToJsonStart :: [Row] -> String
+rowsToJsonStart (x:xs) = "[" ++ rowToJsonStart x ++ rowsToJson xs ++ "]"
 
+rowsToJson :: [Row] -> String
+rowsToJson (x:xs) = ", " ++ rowToJsonStart x ++ rowsToJson xs
+rowsToJson [] = ""
 
+rowToJsonStart :: Row -> String
+rowToJsonStart (x:xs) = "[" ++ valueToJson x ++ rowToJson xs ++ "]"
 
+rowToJson :: Row -> String
+rowToJson (x:xs) = ", " ++ valueToJson x ++ rowToJson xs
+rowToJson [] = ""
 
-
-
-
-
+valueToJson :: Value -> String
+valueToJson (IntegerValue value) = "{\"IntegerValue\": " ++ show value ++ "}"
+valueToJson (StringValue value) = "{\"StringValue\": " ++ show value ++ "}"
+valueToJson (BoolValue value) = if value then "{\"BoolValue\": true}" else "{\"BoolValue\": false}"
+valueToJson NullValue = "{\"NullValue\": null}"
 
 -- //////////////////////////// PARSING ////////////////////////////
 
@@ -456,21 +539,8 @@ singleUpdateParser = do
 -- Match the lowercase or uppercase form of 'c'
 caseInsensitiveChar c = char (toLower c) <|> char (toUpper c)
 -- Match the string 's', accepting either lowercase or uppercase form of each character 
-caseInsensitiveString s = try (mapM caseInsensitiveChar s) <?> "\"" ++ s ++ "\""
+caseInsensitiveString s = try (mapM caseInsensitiveChar s) Text.Parsec.<?> "\"" ++ s ++ "\""
 
 -- //////////////////////////// END OF PARSING ////////////////////////////
 
 
-
-
--- Redundant code
-
-deleteExecution :: ParsedStatement -> Execution (Either ErrorMessage DataFrame)
-deleteExecution (DeleteStatement tableName conditions) = do
-  -- Read & Parse JSON here
-  fileContent <- loadFile "db/example.txt" 
-  -- Delete here
-  let modifiedfileContent = if null fileContent then [] else tail fileContent -- example
-  -- Encode to JSON & write
-  savedFile <- saveFile "db/example.txt" (modifiedfileContent)
-  return $ Right (DataFrame [] []) -- return modified dataFrame to print in console

@@ -1,0 +1,1 @@
+{"columns": [{"name": "a", "type": "IntegerType"}, {"name": "b", "type": "IntegerType"}, {"name": "c", "type": "StringType"}, {"name": "d", "type": "BoolType"}], "rows": [[{"IntegerValue": 5}, {"NullValue": null}, {"StringValue": "ddddddddddd"}, {"BoolValue": true}], [{"IntegerValue": 10}, {"IntegerValue": 20}, {"StringValue": "no"}, {"BoolValue": false}]]}
