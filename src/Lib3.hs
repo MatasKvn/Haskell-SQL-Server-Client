@@ -9,6 +9,8 @@ module Lib3
     ExecutionAlgebra (..),
     runExecuteIO,
     isTestEnv,
+    parseSql,
+    ParsedStatement (SelectStatement, DeleteStatement, UpdateStatement, InsertStatement, ShowCurrentTime),
   )
 where
 

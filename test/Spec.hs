@@ -16,9 +16,33 @@ main = do
   hspec $ do
 
     describe "TEST" $ do
-      it "checks if currently testing" $ do
-        isTest <- isTestEnv
+      it "detects test environment" $ do
+        isTest <- Lib3.isTestEnv
         isTest `shouldBe` True
+        
+    describe "Lib3 Parsing" $ do
+      it "Parses 'NOW();'" $ do
+        Lib3.parseSql "NOW();" `shouldBe` Right Lib3.ShowCurrentTime
+
+      it "Parses 'SELECT'" $ do
+        Lib3.parseSql "SELECT a, b FROM c, d WHERE a!=b OR b=1;" `shouldBe` Right (Lib3.SelectStatement ["a","b"] ["c","d"] ["a!=b","b=1"])
+      it "Parses 'DELETE'" $ do
+        Lib3.parseSql "DELETE FROM a where exampleColumn = 1 OR exampleColumn != 5;" `shouldBe` Right (Lib3.DeleteStatement "a" ["exampleColumn=1","exampleColumn!=5"])
+      it "Parses 'INSERT'" $ do
+        Lib3.parseSql "INSERT INTO a (a1, a2) VALUES (1, True);" `shouldBe` Right (Lib3.InsertStatement "a" ["a1","a2"] ["1","True"])
+      it "Parses 'UPDATE'" $ do
+        Lib3.parseSql "Update table SET column1=True WHERE column2=5;" `shouldBe` Right (Lib3.UpdateStatement "table" ["column1=True"] ["column2=5"])
+        
+    describe "\nLib3 NOW()" $ do
+      it "gets current time" $ do
+        result <- Lib3.runExecuteIO $ Lib3.executeSql "NOW();"
+        result `shouldSatisfy` isRight
+    describe "Lib3 SELECT" $ do
+      it "executes SELECT queries" $ do
+        result <- Lib3.runExecuteIO $ Lib3.executeSql "SELECT value, id FROM flags, employees;"
+        result `shouldSatisfy` isRight
+
+    
 
     describe "\nLib1.findTableByName" $ do
       it "handles empty lists" $ do
