@@ -36,8 +36,8 @@ import Text.Parsec
 import Text.Parsec.String ( Parser )
 import Data.Char ( toLower, toUpper )
 import System.IO
-import qualified Lib1
-import Lib2 (showTables, showTableByName, getTable)
+import Lib1 ( renderDataFrameAsTable )
+import Lib2 (showTables, showTableByName, getTable, mergeListOfDataFrames, filterDataframe, columnListDF)
 import Control.Exception (handle, IOException)
 import System.Environment
 import InMemoryTables (database)
@@ -68,6 +68,7 @@ type ErrorMessage = String
 
 data ExecutionAlgebra next
   = LoadFile TableName ((Either ErrorMessage DataFrame) -> next)
+  | LoadFileMultiple [TableName] ((Either ErrorMessage DataFrame) -> next)
   | GetTime (UTCTime -> next)
   -- feel free to add more constructors here
   | SaveFile TableName DataFrame ((Either ErrorMessage DataFrame) -> next)
@@ -87,15 +88,14 @@ type Execution = Free ExecutionAlgebra
 loadFile :: TableName -> Execution (Either ErrorMessage DataFrame)
 loadFile name = liftF $ LoadFile name id
 
+loadFileMultiple :: [TableName] -> Execution (Either ErrorMessage DataFrame)
+loadFileMultiple names = liftF $ LoadFileMultiple names id
+
 getTime :: Execution UTCTime
 getTime = liftF $ GetTime id
 
 saveFile :: TableName -> DataFrame -> Execution (Either ErrorMessage DataFrame)
 saveFile name content = liftF $ SaveFile name content id 
-
-
-
-
 
 
 
@@ -108,16 +108,27 @@ executeSql sql = do
     Left err -> return $ Left err
     Right parsedStatement -> executeParsedStatement parsedStatement
 
+
+
+
 -- /////////////////////// !!! PARSED STATEMENT EXECUTION !!! ///////////////////////
 executeParsedStatement :: ParsedStatement -> Execution (Either ErrorMessage DataFrame)
 -- SELECT 
 executeParsedStatement (SelectStatement columns tableNames conditions) = do
-  dFrame <- loadFile "example"
-  return $ dFrame
-  -- let selectedDataFrame = (DataFrame [Column "SELECT statement" StringType] [ [StringValue "Not implemented"] ])
+  -- TODO: Need to write InMemoryTables serialization to JSON
+  dFrame <- loadFileMultiple tableNames
+  -- let maybeFilteredDataframe = filterDataframe dFrame conditions
+  case dFrame of
+    Left err -> return $ Left err
+    Right dFrame -> do
+      case filterDataframe dFrame conditions of
+        Just filteredDataframe -> do
+          let selectedColumns = columnListDF columns filteredDataframe
+          case selectedColumns of
+            Right selectResult -> return $ Right selectResult
+            Left _ -> return $ Left "Some columns were incorrect"
+        Nothing -> return $ Left "Incorrect condition"
   
-
-  -- return $ Right selectedDataFrame
 -- DELETE (cia)
 executeParsedStatement (DeleteStatement tableName conditions) = do
   let tableName = "example" -- TEMP
@@ -177,18 +188,20 @@ f statement = do
   return $ Lib1.renderDataFrameAsTable 100 <$> df
 
 
-
+-- Decide which interpreter to use
 runExecuteIO :: Lib3.Execution r -> IO r
 runExecuteIO execution = do 
   isTest <- isTestEnv
   if isTest then testInterpreter execution
   else productionInterpreter execution
 
-
+-- Shared actions between the TEST & PRODUCTION interpreters
 runStepSHARED :: Lib3.ExecutionAlgebra r -> IO r
 runStepSHARED (Lib3.GetTime next) = getCurrentTime >>= return . next
 
--- PRODUCTION INTERPRETER
+-- /////////////////// PRODUCTION INTERPRETER ///////////////////
+
+-- Production Interpreter
 productionInterpreter :: Lib3.Execution r -> IO r
 productionInterpreter (Pure r) = return r
 productionInterpreter (Free step) = do
@@ -203,6 +216,17 @@ productionInterpreter (Free step) = do
         case jsonToDataframe fileContent of 
           Just dFrame -> return $ next (Right dFrame)
           Nothing -> return $ next (Left $ "Could not load table \"" ++ tableName ++ "\"")
+      -- LoadFileMultiple
+      runStep (LoadFileMultiple tableNames next) = do 
+        putStrLn $ "Opening multiple files: " ++ show tableNames
+        jsons <- readMultipleJSONFiles tableNames
+        case jsonListToDataFrame jsons of
+          Left err -> return $ next (Left err)
+          Right dFrames -> do
+            let bigDFrame = connectTables dFrames
+            -- putStrLn $ "BigDframe: \n" ++ (renderDataFrameAsTable 100 bigDFrame)
+            return $ next $ Right bigDFrame
+
       -- SaveFile
       runStep (SaveFile tableName dFrame next) = do
         let fileContent = dataframeToJson dFrame
@@ -212,9 +236,42 @@ productionInterpreter (Free step) = do
       runStep execution = runStepSHARED execution
 
 
+connectTables :: [DataFrame] -> DataFrame
+connectTables [] = error "No specified tables"
+connectTables (df:dfs) = do 
+  foldl combineDataFrames df dfs
+  where
+    combineDataFrames :: DataFrame -> DataFrame -> DataFrame
+    combineDataFrames (DataFrame cols1 rows1) (DataFrame cols2 rows2) =
+      DataFrame (cols1 ++ cols2) [row1 ++ row2 | row1 <- rows1, row2 <- take (length cols2) rows2]
+
+-- Reading from multiple json Files
+readMultipleJSONFiles :: [String] -> IO [String]
+readMultipleJSONFiles [] = return []
+readMultipleJSONFiles (x : xs) = do 
+  fileContent <- readFile ("db/" ++ x ++ ".json")
+  rest <- readMultipleJSONFiles xs
+  return $ fileContent : rest
+
+-- Parse a list of jsons to a list of DataFrames
+jsonListToDataFrame :: [String] -> Either ErrorMessage [DataFrame]
+jsonListToDataFrame [] = Right []
+jsonListToDataFrame (x : xs) = 
+  case jsonToDataframe x of 
+    Just dFrame -> do 
+      -- rest <- 
+      case jsonListToDataFrame xs of 
+        Right rest' -> 
+          return $  (dFrame : rest')
+        Left err -> Left err
+    Nothing -> Left $ "Unable to parse DataFrame: " ++ x
 
 
--- TEST INTERPRETER
+
+
+-- /////////////////// TEST INTERPRETER ///////////////////
+
+-- Test Interpretere
 testInterpreter :: Lib3.Execution r -> IO r
 testInterpreter (Pure r) = return r
 testInterpreter (Free step) = do
@@ -228,6 +285,14 @@ testInterpreter (Free step) = do
         case getTable database tableName of 
           Just dFrame -> return $ next (Right dFrame) -- into JSON and return
           Nothing -> return $ next (Left $ "Table " ++ tableName ++ " not found.")
+      -- LoadFileMultiple
+      runStepTEST (LoadFileMultiple tableNames next) = do 
+        case getTablesFromInMemoryTables tableNames of 
+          Left err -> return $ next $ Left err
+          Right dFrames -> do
+            let bigDFrame = connectTables dFrames
+            -- putStrLn $ "BigDframe: \n" ++ (renderDataFrameAsTable 100 bigDFrame)
+            return $ next $ Right bigDFrame
       -- SaveFile
       runStepTEST (SaveFile tableName dFrame next) = do
         putStrLn $ "TEST: SaveTable: " ++ show tableName ++ " with content:" ++ "\n" ++ show dFrame
@@ -236,6 +301,15 @@ testInterpreter (Free step) = do
           Nothing -> return $ next (Left $ "Could not save table \"" ++ tableName ++ "\"")
       runStepTEST execution = runStepSHARED execution
 
+-- Gets the given tables from "InMemoryTables.hs"
+getTablesFromInMemoryTables :: [TableName] -> Either ErrorMessage [DataFrame]
+getTablesFromInMemoryTables [] = Right []
+getTablesFromInMemoryTables (x : xs) = 
+  case getTable database x of 
+    Nothing -> Left $ "Table: \"" ++ x ++ "\" does not exist in the database."
+    Just table -> do
+      rest <- getTablesFromInMemoryTables xs
+      return $ table : rest
 
 
 
@@ -243,10 +317,9 @@ testInterpreter (Free step) = do
 
 
 
---- /////////////////// FROM Main.hs ///////////////////
--- /////////////////////// !!! PARSED STATEMENT EXECUTION !!! ///////////////////////
 
--- CHECKS IF CURRENTLY TESTING
+
+-- Checks if currently testing
 isTestEnv :: IO Bool
 isTestEnv = do
   isTesting <- lookupEnv "ENVIRONMENT_TEST"
@@ -255,10 +328,6 @@ isTestEnv = do
       return True
     Nothing -> do
       return False
-
-
-
-
 
 
 
@@ -277,6 +346,9 @@ row2 :: [Value]
 row2 = [IntegerValue 10, IntegerValue 20, StringValue "no", BoolValue False]
 testData :: DataFrame
 testData = DataFrame [a, b, c, d] [row1, row2]
+
+
+
 
 
 -- //////////////////////////// WRITE/READ JSON ////////////////////////////
@@ -352,7 +424,12 @@ valueToJson (StringValue value) = "{\"StringValue\": " ++ show value ++ "}"
 valueToJson (BoolValue value) = if value then "{\"BoolValue\": true}" else "{\"BoolValue\": false}"
 valueToJson NullValue = "{\"NullValue\": null}"
 
--- //////////////////////////// PARSING ////////////////////////////
+
+
+
+
+
+-- ////////////////////////////  SQL PARSING ////////////////////////////
 
 -- String to SQL statement parser(takes string and returns error or the corresponding sql statement constructor)
 parseSql :: String -> Either ErrorMessage (ParsedStatement)

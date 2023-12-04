@@ -1,0 +1,1 @@
+{"columns": [{"name": "C", "type": "IntegerType"}, {"name": "D", "type": "BoolType"}], "rows": [[{"IntegerValue": 123}, {"BoolValue": true}], [{"IntegerValue": 999}, {"BoolValue": false}]]}
