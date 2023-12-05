@@ -67,6 +67,17 @@ tableLongStrings =
       ]
   )
 
+tableForTesting :: (TableName, DataFrame)
+tableForTesting = 
+  ( "testData",
+    DataFrame
+      [Column "a" IntegerType, Column "b" IntegerType, Column "c" StringType, Column "d" BoolType]
+      [ [IntegerValue 5, IntegerValue 15, StringValue "ddddddddddd", BoolValue True],
+        [IntegerValue 10, IntegerValue 20, StringValue "no", BoolValue False],
+        [IntegerValue 30, IntegerValue 30, StringValue "equal", BoolValue True]
+      ]
+  )
+
 tableWithNulls :: (TableName, DataFrame)
 tableWithNulls =
   ( "flags",
@@ -80,4 +91,4 @@ tableWithNulls =
   )
 
 database :: [(TableName, DataFrame)]
-database = [tableEmployees, tableInvalid1, tableInvalid2, tableLongStrings, tableWithNulls]
+database = [tableForTesting, tableEmployees, tableInvalid1, tableInvalid2, tableLongStrings, tableWithNulls]
