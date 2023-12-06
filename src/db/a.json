@@ -1,1 +1,0 @@
-{"columns": [{"name": "A", "type": "StringType"}, {"name": "B", "type": "BoolType"}], "rows": [[{"StringValue": "xddd"}, {"BoolValue": true}], [{"StringValue": "amongus"}, {"BoolValue": false}]]}
