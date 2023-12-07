@@ -651,7 +651,26 @@ parseValue str
 columnName :: Column -> String
 columnName (Column name _) = name
 
-
+-- UPDATE
+updateStatement :: DataFrame -> [String] -> Maybe [String] -> DataFrame
+updateStatement df@(DataFrame cols rows) updates mConditions = DataFrame cols (map updateRow rows)
+  where
+    updateRow row = if matchCondition row then applyUpdates row else row
+    matchCondition row = case mConditions of
+      Nothing -> True
+      Just conditions -> all (\cond -> evalCondition cond row) parsedConditions
+    parsedConditions = map parseCondition (maybe [] id mConditions)
+    parsedUpdates = map parseCondition updates
+    parseCondition cond = case parse conditionParser "" cond of
+      Left _ -> error $ "Failed to parse condition: " ++ cond
+      Right res -> res
+    evalCondition (colName, op, val) row = case findIndex ((== colName) . columnName) cols of
+      Nothing -> error $ "Column not found: " ++ colName
+      Just idx -> compareValue op (row !! idx) (parseValue val)
+    applyUpdates row = foldl applyUpdate row parsedUpdates
+    applyUpdate row (colName, _, val) = case findIndex ((== colName) . columnName) cols of
+      Nothing -> error $ "Column not found: " ++ colName
+      Just idx -> take idx row ++ [parseValue val] ++ drop (idx + 1) row
 
 
 
