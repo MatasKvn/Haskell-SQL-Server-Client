@@ -623,22 +623,28 @@ caseInsensitiveString s = try (mapM caseInsensitiveChar s) Text.Parsec.<?> "\"" 
 -- //////////////////////////// END OF PARSING ////////////////////////////
 
 
--- DELETE row from dataframe function
-deleteRow :: Int -> DataFrame -> DataFrame
-deleteRow idx (DataFrame cols rows) = DataFrame cols (take idx rows ++ drop (idx + 1) rows)
+-- DELETE
 
--- function for updating a cell
--- example of use:
--- updateCell (0,0) (IntegerValue 100) testData
-updateCell :: (Int, Int) -> Value -> DataFrame -> DataFrame
-updateCell (rowIdx, colIdx) newValue (DataFrame cols rows) = DataFrame cols updatedRows
-  where
-    updatedRows = [ if i == rowIdx then updateRow row else row | (row, i) <- zip rows [0..] ]
-    updateRow row = [ if j == colIdx then newValue else cell | (cell, j) <- zip row [0..] ]
 
--- insert function
-insertRow :: Row -> DataFrame -> DataFrame
-insertRow newRow (DataFrame cols rows) = DataFrame cols (rows ++ [newRow])
+compareValue :: String -> Value -> Value -> Bool
+compareValue "="  (IntegerValue a) (IntegerValue b) = a == b
+compareValue "!=" (IntegerValue a) (IntegerValue b) = a /= b
+compareValue ">"  (IntegerValue a) (IntegerValue b) = a > b
+compareValue "<"  (IntegerValue a) (IntegerValue b) = a < b
+compareValue _ _ _ = error "Invalid operator or value type"
+
+parseValue :: String -> Value
+parseValue str
+  | all (`elem` ['0'..'9']) str = IntegerValue (read str)
+  | otherwise = StringValue str
+
+columnName :: Column -> String
+columnName (Column name _) = name
+
+
+
+
+
 
 
 
