@@ -624,7 +624,17 @@ caseInsensitiveString s = try (mapM caseInsensitiveChar s) Text.Parsec.<?> "\"" 
 
 
 -- DELETE
-
+deleteStatement :: DataFrame -> [String] -> DataFrame
+deleteStatement df@(DataFrame cols rows) conditions = DataFrame cols (filter matchCondition rows)
+  where
+    matchCondition row = all (\cond -> not (evalCondition cond row)) parsedConditions
+    parsedConditions = map parseCondition conditions
+    parseCondition cond = case parse conditionParser "" cond of
+      Left _ -> error $ "Failed to parse condition: " ++ cond
+      Right res -> res
+    evalCondition (colName, op, val) row = case findIndex ((== colName) . columnName) cols of
+      Nothing -> error $ "Column not found: " ++ colName
+      Just idx -> compareValue op (row !! idx) (parseValue val)
 
 compareValue :: String -> Value -> Value -> Bool
 compareValue "="  (IntegerValue a) (IntegerValue b) = a == b
