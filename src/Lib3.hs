@@ -623,3 +623,32 @@ caseInsensitiveString s = try (mapM caseInsensitiveChar s) Text.Parsec.<?> "\"" 
 -- //////////////////////////// END OF PARSING ////////////////////////////
 
 
+-- DELETE row from dataframe function
+deleteRow :: Int -> DataFrame -> DataFrame
+deleteRow idx (DataFrame cols rows) = DataFrame cols (take idx rows ++ drop (idx + 1) rows)
+
+-- function for updating a cell
+-- example of use:
+-- updateCell (0,0) (IntegerValue 100) testData
+updateCell :: (Int, Int) -> Value -> DataFrame -> DataFrame
+updateCell (rowIdx, colIdx) newValue (DataFrame cols rows) = DataFrame cols updatedRows
+  where
+    updatedRows = [ if i == rowIdx then updateRow row else row | (row, i) <- zip rows [0..] ]
+    updateRow row = [ if j == colIdx then newValue else cell | (cell, j) <- zip row [0..] ]
+
+-- insert function
+insertRow :: Row -> DataFrame -> DataFrame
+insertRow newRow (DataFrame cols rows) = DataFrame cols (rows ++ [newRow])
+
+
+
+
+--testing
+
+newRow = [IntegerValue 100, IntegerValue 200, StringValue "yes", BoolValue True]
+updatedData = insertRow newRow testData
+
+printDataFrame :: DataFrame -> IO ()
+printDataFrame (DataFrame cols rows) = do
+  print cols
+  mapM_ print rows
