@@ -646,6 +646,7 @@ compareValue _ _ _ = error "Invalid operator or value type"
 parseValue :: String -> Value
 parseValue str
   | all (`elem` ['0'..'9']) str = IntegerValue (read str)
+  | str == "True" || str == "False" = BoolValue (read str)
   | otherwise = StringValue str
 
 columnName :: Column -> String
@@ -672,18 +673,15 @@ updateStatement df@(DataFrame cols rows) updates mConditions = DataFrame cols (m
       Nothing -> error $ "Column not found: " ++ colName
       Just idx -> take idx row ++ [parseValue val] ++ drop (idx + 1) row
 
-
-
-
-
-
-
---testing
-
-newRow = [IntegerValue 100, IntegerValue 200, StringValue "yes", BoolValue True]
-updatedData = insertRow newRow testData
-
-printDataFrame :: DataFrame -> IO ()
-printDataFrame (DataFrame cols rows) = do
-  print cols
-  mapM_ print rows
+--INSERT
+insertStatement :: DataFrame -> Maybe [String] -> [String] -> DataFrame
+insertStatement df@(DataFrame cols rows) mColNames values
+  | length values > length cols = error "Too many values"
+  | otherwise = DataFrame cols (rows ++ [newRow])
+  where
+    newRow = case mColNames of
+      Nothing -> map parseValue (values ++ repeat "NULL")
+      Just colNames -> map (\col -> findValue (columnName col) colNames values) cols
+    findValue colName colNames values = case lookup colName (zip colNames (map parseValue (values ++ repeat "NULL"))) of
+      Nothing -> NullValue
+      Just val -> val
