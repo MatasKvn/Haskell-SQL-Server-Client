@@ -48,6 +48,7 @@ import qualified Data.Text.Encoding as TE
 import qualified Data.ByteString.Lazy.Char8 as BSL
 import Data.Aeson as A hiding (Value)
 import Control.Applicative ((<|>))
+import Data.List (findIndex)
 
 -- Keep the type, modify constructors
 data ParsedStatement
@@ -631,7 +632,7 @@ deleteStatement df@(DataFrame cols rows) conditions = DataFrame cols (filter mat
     parsedConditions = map parseCondition conditions
     parseCondition cond = case parse conditionParser "" cond of
       Left _ -> error $ "Failed to parse condition: " ++ cond
-      Right res -> res
+      Right res -> let [colName, op, val] = words res in (colName, op, val)
     evalCondition (colName, op, val) row = case findIndex ((== colName) . columnName) cols of
       Nothing -> error $ "Column not found: " ++ colName
       Just idx -> compareValue op (row !! idx) (parseValue val)
@@ -664,7 +665,7 @@ updateStatement df@(DataFrame cols rows) updates mConditions = DataFrame cols (m
     parsedUpdates = map parseCondition updates
     parseCondition cond = case parse conditionParser "" cond of
       Left _ -> error $ "Failed to parse condition: " ++ cond
-      Right res -> res
+      Right res -> let [colName, op, val] = words res in (colName, op, val)
     evalCondition (colName, op, val) row = case findIndex ((== colName) . columnName) cols of
       Nothing -> error $ "Column not found: " ++ colName
       Just idx -> compareValue op (row !! idx) (parseValue val)
