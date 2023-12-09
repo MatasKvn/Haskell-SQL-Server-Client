@@ -131,35 +131,32 @@ executeParsedStatement (SelectStatement columns tableNames conditions) = do
             Right selectResult -> return $ Right selectResult
             Left _ -> return $ Left "Some columns were incorrect"
         Nothing -> return $ Left "Incorrect condition"
-  
+ 
 -- DELETE (cia)
 executeParsedStatement (DeleteStatement tableName conditions) = do
-  let tableName = "example" -- TEMP
   dFrame <- loadFile tableName
   case dFrame of 
     Right dFrame -> do
-      let modifiedDataFrame = dFrame -- DELETE
+      let modifiedDataFrame = deleteFunction dFrame conditions
       savedFile <- saveFile tableName (modifiedDataFrame) -- failo rasymas vyksta: runStep (SaveFile tableName fileContent next)
       return $ Right modifiedDataFrame 
     Left err -> return $ Left err
 
 -- UPDATE
 executeParsedStatement (UpdateStatement tableName updates conditions) = do
-  let tableName = "example" -- TEMP
   dFrame <- loadFile tableName
   case dFrame of 
     Right dFrame -> do
-      let modifiedDataFrame = dFrame -- UPDATE
+      let modifiedDataFrame = updateFunction dFrame updates conditions
       savedFile <- saveFile tableName (modifiedDataFrame) -- failo rasymas vyksta: runStep (SaveFile tableName fileContent next)
       return $ Right modifiedDataFrame 
     Left err -> return $ Left err
 -- INSERT
 executeParsedStatement (InsertStatement tableName columns values) = do
-  let tableName = "example" -- TEMP
   dFrame <- loadFile tableName
   case dFrame of 
     Right dFrame -> do
-      let modifiedDataFrame = dFrame -- INSERT
+      let modifiedDataFrame = insertFunction dFrame columns values
       savedFile <- saveFile tableName (modifiedDataFrame) -- failo rasymas vyksta: runStep (SaveFile tableName fileContent next)
       return $ Right modifiedDataFrame 
     Left err -> return $ Left err
@@ -625,8 +622,8 @@ caseInsensitiveString s = try (mapM caseInsensitiveChar s) Text.Parsec.<?> "\"" 
 
 
 -- DELETE
-deleteStatement :: DataFrame -> [String] -> DataFrame
-deleteStatement df@(DataFrame cols rows) conditions = DataFrame cols (filter matchCondition rows)
+deleteFunction :: DataFrame -> [String] -> DataFrame
+deleteFunction df@(DataFrame cols rows) conditions = DataFrame cols (filter matchCondition rows)
   where
     matchCondition row = all (\cond -> not (evalCondition cond row)) parsedConditions
     parsedConditions = map parseCondition conditions
@@ -654,14 +651,12 @@ columnName :: Column -> String
 columnName (Column name _) = name
 
 -- UPDATE
-updateStatement :: DataFrame -> [String] -> Maybe [String] -> DataFrame
-updateStatement df@(DataFrame cols rows) updates mConditions = DataFrame cols (map updateRow rows)
+updateFunction :: DataFrame -> [String] -> [String] -> DataFrame
+updateFunction df@(DataFrame cols rows) updates conditions = DataFrame cols (map updateRow rows)
   where
     updateRow row = if matchCondition row then applyUpdates row else row
-    matchCondition row = case mConditions of
-      Nothing -> True
-      Just conditions -> all (\cond -> evalCondition cond row) parsedConditions
-    parsedConditions = map parseCondition (maybe [] id mConditions)
+    matchCondition row = all (\cond -> evalCondition cond row) parsedConditions
+    parsedConditions = map parseCondition conditions
     parsedUpdates = map parseCondition updates
     parseCondition cond = case parse conditionParser "" cond of
       Left _ -> error $ "Failed to parse condition: " ++ cond
@@ -674,15 +669,15 @@ updateStatement df@(DataFrame cols rows) updates mConditions = DataFrame cols (m
       Nothing -> error $ "Column not found: " ++ colName
       Just idx -> take idx row ++ [parseValue val] ++ drop (idx + 1) row
 
+
 --INSERT
-insertStatement :: DataFrame -> Maybe [String] -> [String] -> DataFrame
-insertStatement df@(DataFrame cols rows) mColNames values
+insertFunction :: DataFrame -> [String] -> [String] -> DataFrame
+insertFunction df@(DataFrame cols rows) colNames values
   | length values > length cols = error "Too many values"
   | otherwise = DataFrame cols (rows ++ [newRow])
   where
-    newRow = case mColNames of
-      Nothing -> map parseValue (values ++ repeat "NULL")
-      Just colNames -> map (\col -> findValue (columnName col) colNames values) cols
+    newRow = map (\col -> findValue (columnName col) colNames values) cols
     findValue colName colNames values = case lookup colName (zip colNames (map parseValue (values ++ repeat "NULL"))) of
       Nothing -> NullValue
       Just val -> val
+
