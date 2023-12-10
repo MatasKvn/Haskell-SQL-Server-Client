@@ -642,6 +642,8 @@ compareValue "="  (IntegerValue a) (IntegerValue b) = a == b
 compareValue "!=" (IntegerValue a) (IntegerValue b) = a /= b
 compareValue ">"  (IntegerValue a) (IntegerValue b) = a > b
 compareValue "<"  (IntegerValue a) (IntegerValue b) = a < b
+compareValue "<=" (IntegerValue a) (IntegerValue b) = a <= b
+compareValue ">=" (IntegerValue a) (IntegerValue b) = a >= b
 compareValue "="  (StringValue a) (StringValue b) = a == b
 compareValue "!=" (StringValue a) (StringValue b) = a /= b
 compareValue "="  (BoolValue a) (BoolValue b) = a == b
