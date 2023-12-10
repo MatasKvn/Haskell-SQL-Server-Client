@@ -48,6 +48,7 @@ import qualified Data.Text.Encoding as TE
 import qualified Data.ByteString.Lazy.Char8 as BSL
 import Data.Aeson as A hiding (Value)
 import Control.Applicative ((<|>))
+import Data.List (findIndex)
 
 -- Keep the type, modify constructors
 data ParsedStatement
@@ -130,35 +131,32 @@ executeParsedStatement (SelectStatement columns tableNames conditions) = do
             Right selectResult -> return $ Right selectResult
             Left _ -> return $ Left "Some columns were incorrect"
         Nothing -> return $ Left "Incorrect condition"
-  
+ 
 -- DELETE (cia)
 executeParsedStatement (DeleteStatement tableName conditions) = do
-  let tableName = "example" -- TEMP
   dFrame <- loadFile tableName
   case dFrame of 
     Right dFrame -> do
-      let modifiedDataFrame = dFrame -- DELETE
+      let modifiedDataFrame = deleteFunction dFrame conditions
       savedFile <- saveFile tableName (modifiedDataFrame) -- failo rasymas vyksta: runStep (SaveFile tableName fileContent next)
       return $ Right modifiedDataFrame 
     Left err -> return $ Left err
 
 -- UPDATE
 executeParsedStatement (UpdateStatement tableName updates conditions) = do
-  let tableName = "example" -- TEMP
   dFrame <- loadFile tableName
   case dFrame of 
     Right dFrame -> do
-      let modifiedDataFrame = dFrame -- UPDATE
+      let modifiedDataFrame = updateFunction dFrame updates conditions
       savedFile <- saveFile tableName (modifiedDataFrame) -- failo rasymas vyksta: runStep (SaveFile tableName fileContent next)
       return $ Right modifiedDataFrame 
     Left err -> return $ Left err
 -- INSERT
 executeParsedStatement (InsertStatement tableName columns values) = do
-  let tableName = "example" -- TEMP
   dFrame <- loadFile tableName
   case dFrame of 
     Right dFrame -> do
-      let modifiedDataFrame = dFrame -- INSERT
+      let modifiedDataFrame = insertFunction dFrame columns values
       savedFile <- saveFile tableName (modifiedDataFrame) -- failo rasymas vyksta: runStep (SaveFile tableName fileContent next)
       return $ Right modifiedDataFrame 
     Left err -> return $ Left err
@@ -622,4 +620,64 @@ caseInsensitiveString s = try (mapM caseInsensitiveChar s) Text.Parsec.<?> "\"" 
 
 -- //////////////////////////// END OF PARSING ////////////////////////////
 
+
+-- DELETE
+deleteFunction :: DataFrame -> [String] -> DataFrame
+deleteFunction df@(DataFrame cols rows) conditions = DataFrame cols (filter matchCondition rows)
+  where
+    matchCondition row = all (\cond -> not (evalCondition cond row)) parsedConditions
+    parsedConditions = map parseCondition conditions
+    parseCondition cond = case parse conditionParser "" cond of
+      Left _ -> error $ "Failed to parse condition: " ++ cond
+      Right res -> let [colName, op, val] = words res in (colName, op, val)
+    evalCondition (colName, op, val) row = case findIndex ((== colName) . columnName) cols of
+      Nothing -> error $ "Column not found: " ++ colName
+      Just idx -> compareValue op (row !! idx) (parseValue val)
+
+compareValue :: String -> Value -> Value -> Bool
+compareValue "="  (IntegerValue a) (IntegerValue b) = a == b
+compareValue "!=" (IntegerValue a) (IntegerValue b) = a /= b
+compareValue ">"  (IntegerValue a) (IntegerValue b) = a > b
+compareValue "<"  (IntegerValue a) (IntegerValue b) = a < b
+compareValue _ _ _ = error "Invalid operator or value type"
+
+parseValue :: String -> Value
+parseValue str
+  | all (`elem` ['0'..'9']) str = IntegerValue (read str)
+  | str == "True" || str == "False" = BoolValue (read str)
+  | otherwise = StringValue str
+
+columnName :: Column -> String
+columnName (Column name _) = name
+
+-- UPDATE
+updateFunction :: DataFrame -> [String] -> [String] -> DataFrame
+updateFunction df@(DataFrame cols rows) updates conditions = DataFrame cols (map updateRow rows)
+  where
+    updateRow row = if matchCondition row then applyUpdates row else row
+    matchCondition row = all (\cond -> evalCondition cond row) parsedConditions
+    parsedConditions = map parseCondition conditions
+    parsedUpdates = map parseCondition updates
+    parseCondition cond = case parse conditionParser "" cond of
+      Left _ -> error $ "Failed to parse condition: " ++ cond
+      Right res -> let [colName, op, val] = words res in (colName, op, val)
+    evalCondition (colName, op, val) row = case findIndex ((== colName) . columnName) cols of
+      Nothing -> error $ "Column not found: " ++ colName
+      Just idx -> compareValue op (row !! idx) (parseValue val)
+    applyUpdates row = foldl applyUpdate row parsedUpdates
+    applyUpdate row (colName, _, val) = case findIndex ((== colName) . columnName) cols of
+      Nothing -> error $ "Column not found: " ++ colName
+      Just idx -> take idx row ++ [parseValue val] ++ drop (idx + 1) row
+
+
+--INSERT
+insertFunction :: DataFrame -> [String] -> [String] -> DataFrame
+insertFunction df@(DataFrame cols rows) colNames values
+  | length values > length cols = error "Too many values"
+  | otherwise = DataFrame cols (rows ++ [newRow])
+  where
+    newRow = map (\col -> findValue (columnName col) colNames values) cols
+    findValue colName colNames values = case lookup colName (zip colNames (map parseValue (values ++ repeat "NULL"))) of
+      Nothing -> NullValue
+      Just val -> val
 
