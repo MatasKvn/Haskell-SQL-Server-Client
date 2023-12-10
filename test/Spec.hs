@@ -8,6 +8,8 @@ import DataFrame
 import Test.Hspec
 import qualified Lib2
 import System.Environment
+import Lib3 
+import DataFrame (DataFrame(DataFrame), ColumnType (StringType), Value (StringValue))
 
 main :: IO ()
 main = do 
@@ -15,7 +17,8 @@ main = do
   setEnv "ENVIRONMENT_TEST" "1"
   hspec $ do
 
-    describe "TEST" $ do
+    -- Lib3.hs tests
+    describe "TEST Environment" $ do
       it "detects test environment" $ do
         isTest <- Lib3.isTestEnv
         isTest `shouldBe` True
@@ -32,18 +35,36 @@ main = do
         Lib3.parseSql "INSERT INTO a (a1, a2) VALUES (1, True);" `shouldBe` Right (Lib3.InsertStatement "a" ["a1","a2"] ["1","True"])
       it "Parses 'UPDATE'" $ do
         Lib3.parseSql "Update table SET column1=True WHERE column2=5;" `shouldBe` Right (Lib3.UpdateStatement "table" ["column1=True"] ["column2=5"])
-        
+
+    describe "JSON Serialization" $ do
+      it "Serializes DataFrames to JSON" $ do
+        Lib3.dataframeToJson (DataFrame [Column "C1" StringType] [[StringValue "testStringValue"]]) `shouldBe` "{\"columns\": [{\"name\": \"C1\", \"type\": \"StringType\"}], \"rows\": [[{\"StringValue\": \"testStringValue\"}]]}"
+      it "Parses JSON's to DataFrames" $ do
+        Lib3.jsonToDataframe ("{\"columns\": [{\"name\": \"C1\", \"type\": \"StringType\"}], \"rows\": [[{\"StringValue\": \"testStringValue\"}]]}") `shouldBe` Just  (DataFrame [Column "C1" StringType] [[StringValue "testStringValue"]])
+
     describe "\nLib3 NOW()" $ do
       it "gets current time" $ do
         result <- Lib3.runExecuteIO $ Lib3.executeSql "NOW();"
         result `shouldSatisfy` isRight
-    describe "Lib3 SELECT" $ do
+    describe "Lib3 Statement Execution" $ do
       it "executes SELECT queries" $ do
         result <- Lib3.runExecuteIO $ Lib3.executeSql "SELECT value, id FROM flags, employees;"
         result `shouldSatisfy` isRight
+      it "executes INSERT queries" $ do
+        result <- Lib3.runExecuteIO $ Lib3.executeSql "INSERT INTO employees (id, name, surname) VALUES (999, 'Vardenis', 'Pavardenis') ;"
+        result `shouldSatisfy` isRight
+      it "executes UPDATE queries" $ do
+        result <- Lib3.runExecuteIO $ Lib3.executeSql "UPDATE employees SET name='Petras', surname='Petrauskas' where id!=1 ;"
+        result `shouldSatisfy` isRight
+      it "executes DELETE queries" $ do
+        result <- Lib3.runExecuteIO $ Lib3.executeSql "DELETE FROM employees where id=1 ;"
+        result `shouldSatisfy` isRight
 
+
+      
     
 
+    -- Lib1.hs tests
     describe "\nLib1.findTableByName" $ do
       it "handles empty lists" $ do
         Lib1.findTableByName [] "" `shouldBe` Nothing

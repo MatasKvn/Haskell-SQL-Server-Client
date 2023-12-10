@@ -11,6 +11,8 @@ module Lib3
     isTestEnv,
     parseSql,
     ParsedStatement (SelectStatement, DeleteStatement, UpdateStatement, InsertStatement, ShowCurrentTime),
+    dataframeToJson,
+    jsonToDataframe,
   )
 where
 
@@ -132,7 +134,7 @@ executeParsedStatement (SelectStatement columns tableNames conditions) = do
             Left _ -> return $ Left "Some columns were incorrect"
         Nothing -> return $ Left "Incorrect condition"
  
--- DELETE (cia)
+-- DELETE 
 executeParsedStatement (DeleteStatement tableName conditions) = do
   dFrame <- loadFile tableName
   case dFrame of 
