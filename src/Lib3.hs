@@ -627,7 +627,9 @@ deleteFunction df@(DataFrame cols rows) conditions = DataFrame cols (filter matc
   where
     matchCondition row = all (\cond -> not (evalCondition cond row)) parsedConditions
     parsedConditions = map parseCond conditions
-    parseCond cond = let [colName, op, val] = words cond in (colName, op, val)
+    parseCond cond = let (colName, rest) = break (`elem` ['=', '!', '>', '<']) cond
+                         (op, val) = span (`elem` ['=', '!', '>', '<']) rest
+                     in (colName, op, drop (length op) rest)
     evalCondition (colName, op, val) row = case findIndex ((== colName) . columnName) cols of
       Nothing -> error $ "Column not found: " ++ colName
       Just idx -> compareValue op (row !! idx) (parseValue val)
@@ -638,7 +640,12 @@ compareValue "="  (IntegerValue a) (IntegerValue b) = a == b
 compareValue "!=" (IntegerValue a) (IntegerValue b) = a /= b
 compareValue ">"  (IntegerValue a) (IntegerValue b) = a > b
 compareValue "<"  (IntegerValue a) (IntegerValue b) = a < b
+compareValue "="  (StringValue a) (StringValue b) = a == b
+compareValue "!=" (StringValue a) (StringValue b) = a /= b
+compareValue "="  (BoolValue a) (BoolValue b) = a == b
+compareValue "!=" (BoolValue a) (BoolValue b) = a /= b
 compareValue _ _ _ = error "Invalid operator or value type"
+
 
 parseValue :: String -> Value
 parseValue str
@@ -657,7 +664,9 @@ updateFunction df@(DataFrame cols rows) updates conditions = DataFrame cols (map
     matchCondition row = all (\cond -> evalCondition cond row) parsedConditions
     parsedConditions = map parseCond conditions
     parsedUpdates = map parseCond updates
-    parseCond cond = let [colName, op, val] = words cond in (colName, op, val)
+    parseCond cond = let (colName, rest) = break (`elem` ['=', '!', '>', '<']) cond
+                         (op, val) = span (`elem` ['=', '!', '>', '<']) rest
+                     in (colName, op, drop (length op) rest)
     evalCondition (colName, op, val) row = case findIndex ((== colName) . columnName) cols of
       Nothing -> error $ "Column not found: " ++ colName
       Just idx -> compareValue op (row !! idx) (parseValue val)
@@ -665,6 +674,7 @@ updateFunction df@(DataFrame cols rows) updates conditions = DataFrame cols (map
     applyUpdate row (colName, _, val) = case findIndex ((== colName) . columnName) cols of
       Nothing -> error $ "Column not found: " ++ colName
       Just idx -> take idx row ++ [parseValue val] ++ drop (idx + 1) row
+
 
 --INSERT
 insertFunction :: DataFrame -> [String] -> [String] -> DataFrame
