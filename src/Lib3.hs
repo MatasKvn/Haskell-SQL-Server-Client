@@ -626,13 +626,12 @@ deleteFunction :: DataFrame -> [String] -> DataFrame
 deleteFunction df@(DataFrame cols rows) conditions = DataFrame cols (filter matchCondition rows)
   where
     matchCondition row = all (\cond -> not (evalCondition cond row)) parsedConditions
-    parsedConditions = map parseCondition conditions
-    parseCondition cond = case parse conditionParser "" cond of
-      Left _ -> error $ "Failed to parse condition: " ++ cond
-      Right res -> let [colName, op, val] = words res in (colName, op, val)
+    parsedConditions = map parseCond conditions
+    parseCond cond = let [colName, op, val] = words cond in (colName, op, val)
     evalCondition (colName, op, val) row = case findIndex ((== colName) . columnName) cols of
       Nothing -> error $ "Column not found: " ++ colName
       Just idx -> compareValue op (row !! idx) (parseValue val)
+
 
 compareValue :: String -> Value -> Value -> Bool
 compareValue "="  (IntegerValue a) (IntegerValue b) = a == b
@@ -656,11 +655,9 @@ updateFunction df@(DataFrame cols rows) updates conditions = DataFrame cols (map
   where
     updateRow row = if matchCondition row then applyUpdates row else row
     matchCondition row = all (\cond -> evalCondition cond row) parsedConditions
-    parsedConditions = map parseCondition conditions
-    parsedUpdates = map parseCondition updates
-    parseCondition cond = case parse conditionParser "" cond of
-      Left _ -> error $ "Failed to parse condition: " ++ cond
-      Right res -> let [colName, op, val] = words res in (colName, op, val)
+    parsedConditions = map parseCond conditions
+    parsedUpdates = map parseCond updates
+    parseCond cond = let [colName, op, val] = words cond in (colName, op, val)
     evalCondition (colName, op, val) row = case findIndex ((== colName) . columnName) cols of
       Nothing -> error $ "Column not found: " ++ colName
       Just idx -> compareValue op (row !! idx) (parseValue val)
@@ -668,7 +665,6 @@ updateFunction df@(DataFrame cols rows) updates conditions = DataFrame cols (map
     applyUpdate row (colName, _, val) = case findIndex ((== colName) . columnName) cols of
       Nothing -> error $ "Column not found: " ++ colName
       Just idx -> take idx row ++ [parseValue val] ++ drop (idx + 1) row
-
 
 --INSERT
 insertFunction :: DataFrame -> [String] -> [String] -> DataFrame
