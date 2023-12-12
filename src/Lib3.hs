@@ -8,7 +8,7 @@ module Lib3
     Execution,
     ExecutionAlgebra (..),
     runExecuteIO,
-    isTestEnv,
+    runExecuteTEST,
     parseSql,
     ParsedStatement (SelectStatement, DeleteStatement, UpdateStatement, InsertStatement, ShowCurrentTime),
     dataframeToJson,
@@ -19,9 +19,9 @@ where
 import Lib2 (capitalize)
 
 import Control.Monad.Free (Free (..), liftF)
-import Data.Time (UTCTime)
+import Data.Time (UTCTime (UTCTime), fromGregorian, addUTCTime)
 import Data.Time.Clock (getCurrentTime)
-import Data.Time.Format (formatTime, defaultTimeLocale)
+import Data.Time.Format (formatTime, defaultTimeLocale, parseTimeOrError)
 import DataFrame (Column (..), ColumnType (..), Value (..), Row, DataFrame (..))
 import Text.Parsec
     ( alphaNum,
@@ -190,25 +190,14 @@ f statement = do
   return $ Lib1.renderDataFrameAsTable 100 <$> df
 
 
--- Decide which interpreter to use
-runExecuteIO :: Lib3.Execution r -> IO r
-runExecuteIO execution = do 
-  isTest <- isTestEnv
-  if isTest then testInterpreter execution
-  else productionInterpreter execution
-
--- Shared actions between the TEST & PRODUCTION interpreters
-runStepSHARED :: Lib3.ExecutionAlgebra r -> IO r
-runStepSHARED (Lib3.GetTime next) = getCurrentTime >>= return . next
-
 -- /////////////////// PRODUCTION INTERPRETER ///////////////////
 
 -- Production Interpreter
-productionInterpreter :: Lib3.Execution r -> IO r
-productionInterpreter (Pure r) = return r
-productionInterpreter (Free step) = do
+runExecuteIO :: Lib3.Execution r -> IO r
+runExecuteIO (Pure r) = return r
+runExecuteIO (Free step) = do
   next <- runStep step
-  productionInterpreter next
+  runExecuteIO next
     where 
       -- LoadFile
       runStep :: Lib3.ExecutionAlgebra a -> IO a
@@ -235,7 +224,7 @@ productionInterpreter (Free step) = do
         -- putStrLn $ "SaveTable: " ++ show tableName ++ " with content:" ++ "\n" ++ show dFrame
         withFile ("db/" ++ tableName ++ ".json") WriteMode (\handle -> hPutStr handle fileContent)
         return $ next (Right dFrame)
-      runStep execution = runStepSHARED execution
+      runStep (GetTime next) = getCurrentTime >>= (\currentTime -> return (addUTCTime 7200 currentTime)) >>= \result -> return (next  result)
 
 
 connectTables :: [DataFrame] -> DataFrame
@@ -274,11 +263,11 @@ jsonListToDataFrameList (x : xs) =
 -- /////////////////// TEST INTERPRETER ///////////////////
 
 -- Test Interpretere
-testInterpreter :: Lib3.Execution r -> IO r
-testInterpreter (Pure r) = return r
-testInterpreter (Free step) = do
+runExecuteTEST :: Lib3.Execution r -> IO r
+runExecuteTEST (Pure r) = return r
+runExecuteTEST (Free step) = do
   next <- runStepTEST step
-  testInterpreter next
+  runExecuteTEST next
     where
       -- LoadFile
       runStepTEST :: Lib3.ExecutionAlgebra a -> IO a
@@ -301,7 +290,7 @@ testInterpreter (Free step) = do
         case getTable database tableName of 
           Just dFrame -> return $ next (Right dFrame) -- from JSON and return
           Nothing -> return $ next (Left $ "Could not save table \"" ++ tableName ++ "\"")
-      runStepTEST execution = runStepSHARED execution
+      runStepTEST (GetTime next) = return $ next (UTCTime (fromGregorian 2023 12 12) (60*60*12 + 60*12 + 12))
 
 -- Gets the given tables from "InMemoryTables.hs"
 getTablesFromInMemoryTables :: [TableName] -> Either ErrorMessage [DataFrame]
@@ -312,28 +301,6 @@ getTablesFromInMemoryTables (x : xs) =
     Just table -> do
       rest <- getTablesFromInMemoryTables xs
       return $ table : rest
-
-
-
-
-
-
-
-
-
--- Checks if currently testing
-isTestEnv :: IO Bool
-isTestEnv = do
-  isTesting <- lookupEnv "ENVIRONMENT_TEST"
-  case isTesting of
-    Just _ -> do
-      return True
-    Nothing -> do
-      return False
-
-
-
-
 
 
 

@@ -17,17 +17,6 @@ import System.Console.Repline
     evalRepl,
   )
 import System.Console.Terminal.Size (Window, size, width)
-import System.Environment
-
-isTestEnv :: IO Bool
-isTestEnv = do
-  isTesting <- lookupEnv "TESTING"
-  case isTesting of
-    Just _ -> do
-      return True
-    Nothing -> do
-      return False
-
 
 type Repl a = HaskelineT IO a
 
@@ -66,7 +55,6 @@ cmd c = do
 
 main :: IO ()
 main = do
-  unsetEnv "ENVIRONMENT_TEST"
   evalRepl (const $ pure ">>> ") cmd [] Nothing Nothing (Word completer) ini final
 
 runExecuteIO :: Lib3.Execution r -> IO r
