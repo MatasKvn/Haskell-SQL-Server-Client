@@ -1,5 +1,40 @@
 # fp-2023
 
+
+# Task 4
+
+Run server using `fp2023-server`
+
+Run Client using `fp2023-client`
+
+Requirements:
+ 1. CREATE & DROP table
+ 2. ORDER BY (ASC, DESC) (or Primary & Foreign keys)
+ 3. PARSING SQL (State + EitherT)
+ 4. Thread for saving files
+ 5. HTTP Server & HTTP Client
+ 6. YAML serialization for DataFrames
+
+Client: 
+- Nuskaito statementus (String)
+- Siuncia Statementus (String) i sereri
+- Gauna is serverio DataFrame seriaziluota i YAML
+- Deseriaziluoja YAML i DataFrame
+- Atspausdina DataFrame su renderDataFrameAsTable
+
+Server:
+- Laikyt DataFrame'us kaip failus
+- Paleidus uzloadint DataFrame is failu
+- Paleist thread'a kuris periodiskai issaugo uzloadintus DataFrame'us i failus
+- Klauso requestu is Client'u
+- Parsina gautus Query'us i ParsedStatement
+- Ivykdo ParsedStatement 
+- Siuncia Client'ui serializuota DataFrame (YAML)
+
+
+
+# Old README.md
+
 ## Setup
 1. Checkout the repository. This project uses GitHub Actions haskell workflow,
 please preserve its configuration.

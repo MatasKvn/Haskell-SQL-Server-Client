@@ -26,6 +26,7 @@ source-repository head
 library
   exposed-modules:
       DataFrame
+      Example
       InMemoryTables
       Lessons.Lesson01
       Lessons.Lesson02
@@ -40,6 +41,7 @@ library
       Lib1
       Lib2
       Lib3
+      Lib4
   other-modules:
       Paths_fp2023
   hs-source-dirs:
@@ -51,11 +53,43 @@ library
       aeson
     , base >=4.7 && <5
     , bytestring
+    , either
     , free
+    , mtl
     , parsec
     , text
     , time
     , transformers
+    , transformers-either
+    , yaml
+  default-language: Haskell2010
+
+executable fp2023-client
+  main-is: Client.hs
+  other-modules:
+      Paths_fp2023
+  hs-source-dirs:
+      client
+  default-extensions:
+      ImportQualifiedPost
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , either
+    , extra
+    , fp2023
+    , free
+    , mtl
+    , parsec
+    , repline
+    , terminal-size
+    , text
+    , time
+    , transformers
+    , transformers-either
+    , yaml
   default-language: Haskell2010
 
 executable fp2023-manipulate
@@ -71,14 +105,19 @@ executable fp2023-manipulate
       aeson
     , base >=4.7 && <5
     , bytestring
+    , either
     , extra
     , fp2023
     , free
+    , mtl
     , parsec
     , repline
     , terminal-size
     , text
     , time
+    , transformers
+    , transformers-either
+    , yaml
   default-language: Haskell2010
 
 executable fp2023-select-all
@@ -94,12 +133,17 @@ executable fp2023-select-all
       aeson
     , base >=4.7 && <5
     , bytestring
+    , either
     , extra
     , fp2023
+    , mtl
     , parsec
     , repline
     , terminal-size
     , text
+    , transformers
+    , transformers-either
+    , yaml
   default-language: Haskell2010
 
 executable fp2023-select-more
@@ -115,12 +159,45 @@ executable fp2023-select-more
       aeson
     , base >=4.7 && <5
     , bytestring
+    , either
     , extra
     , fp2023
+    , mtl
     , parsec
     , repline
     , terminal-size
     , text
+    , transformers
+    , transformers-either
+    , yaml
+  default-language: Haskell2010
+
+executable fp2023-server
+  main-is: Server.hs
+  other-modules:
+      Paths_fp2023
+  hs-source-dirs:
+      server
+  default-extensions:
+      ImportQualifiedPost
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , either
+    , extra
+    , fp2023
+    , free
+    , mtl
+    , parsec
+    , repline
+    , terminal-size
+    , text
+    , time
+    , transformers
+    , transformers-either
+    , yaml
   default-language: Haskell2010
 
 test-suite fp2023-test
@@ -137,8 +214,13 @@ test-suite fp2023-test
       aeson
     , base >=4.7 && <5
     , bytestring
+    , either
     , fp2023
     , hspec
+    , mtl
     , parsec
     , text
+    , transformers
+    , transformers-either
+    , yaml
   default-language: Haskell2010
