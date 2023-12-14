@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
-module Lib4 () where
+module Parsing () where
 
 import Control.Monad.State
 import Control.Monad.Trans.Either

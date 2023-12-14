@@ -26,7 +26,6 @@ source-repository head
 library
   exposed-modules:
       DataFrame
-      Example
       InMemoryTables
       Lessons.Lesson01
       Lessons.Lesson02
