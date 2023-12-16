@@ -41,6 +41,7 @@ library
       Lib2
       Lib3
       Parsing
+      ParsingParsec
   other-modules:
       Paths_fp2023
   hs-source-dirs:

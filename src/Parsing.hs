@@ -9,11 +9,12 @@ import Control.Monad.State
 import Control.Monad.Trans.Either
 import Control.Applicative ((<|>), Alternative (empty))
 import Data.Char (toLower, toUpper)
+import Control.Monad.Error (MonadError(catchError))
 
 type ParseError = String
 type Parser a = EitherT ParseError (State String) a
 
-throwE :: Monad m => e -> EitherT e m a 
+throwE :: Monad m => ParseError -> EitherT ParseError m a 
 throwE err = EitherT $ return $ Left err
 
 
@@ -102,6 +103,18 @@ parseWhileCan0 parser = do
     p1 -> do
       rest <- parseWhileCan0 parser
       return (p1 : rest)
+-- Parses 0 or more given string parsers
+parseWhileCan :: Parser String -> Parser [String]
+parseWhileCan parser = do
+  p1 <- parser <|> parseString' ""
+  case p1 of 
+    [] -> return []
+    p1 -> do
+      rest <- parseWhileCan0 parser
+      return (p1 : rest)
+
+-- ab 
+
 
 -- Parses 1 or more given string parsers
 parseWhileCan1 :: Parser String -> Parser [String]
@@ -129,8 +142,6 @@ parseSeparated1 parser1 parser2 = do
       a <- p2
       b <- p1
       return b
-
-
 
 combinedParser :: Parser a -> Parser a -> Parser a
 combinedParser p1 p2 = do
@@ -174,10 +185,16 @@ parseStringOfGivenSymbols chars = do
 
 fparser :: Parser [String]
 fparser = do
-  -- a <- parseSeparated1 (parseString "ab") (parseString' "OR")
-  a <- parseWhileCan1 $ (parseString' "a")
-  -- a <- parseWhileCan0 $ combinedParser (parseString "ab") (parseString ";")
-  return a
+  p1 <- parseTableName
+  rest <- parseWhileCan0 $ combinedParsera (parseTableName) (parseString' "OR ")
+  return $ p1 : rest
+
+  where
+combinedParsera :: Parser a -> Parser a -> Parser a
+combinedParsera p1 p2 = do
+  a <- p2
+  b <- p1
+  return b
 
 
 
@@ -190,7 +207,7 @@ sqlParser statement =
 
 parseSql :: Parser ParsedStatement
 parseSql = do 
-  a <- parseSelect <|> parseDelete
+  a <- parseSelect <|> parseDelete <|> parseUpdate <|> parseInsert 
   return a
 
 
@@ -207,10 +224,77 @@ parseSelect = do
   parseSpaces
   tables <- parseSeparated1 (parseTableName) (parseString' ",")
   parseSpaces
-
-  -- ;
+  -- WHERE
+  conditions <- parseWhereConditions
+  parseSpaces
+  -- ORDER BY
+  orderings <- parseOrderBy
+  parseSpaces
   parseString ";"
-  return $ SelectStatement columns tables []
+
+  return $ SelectStatement columns tables conditions orderings
+
+
+parseWhereConditions :: Parser [String]
+parseWhereConditions = do
+  parseSpaces
+  wher <- parseStringOptional' "WHERE"
+  case wher of
+    [] -> do
+      return []
+    str -> do
+      conditions <- parseSeparated1 (parseTableName) (parseString' "OR ")
+      return conditions
+
+parseOrderBy :: Parser [(String, Bool)]
+parseOrderBy = do
+  order <- parseStringOptional' "ORDER"
+  parseSpaces
+  by <- parseStringOptional' "BY"
+  
+  if null order then
+    return []
+  else if null by then
+    throwE $ "Expected BY"
+  else 
+    parseOrderings
+
+
+parseOrdering :: Parser (String, Bool)
+parseOrdering = do
+  parseSpaces
+  tName <- parseTableName `catchError` handleParseError
+  parseSpaces
+  order <- parseString' "ASC" <|> parseString' "DESC"
+  parseSpaces
+  case order of 
+    "ASC" -> return (tName, True)
+    "DESC" -> return (tName, False)
+  where
+    handleParseError :: String -> Parser String
+    handleParseError err = return $ ""
+
+parseOrderings :: Parser [(String, Bool)]
+parseOrderings = do
+  ord <- parseOrdering
+  next <- parseStringOptional' ","
+  case next of 
+    [] -> return [ord]
+    a -> do 
+      rest <- parseOrderings 
+      return $ ord : rest
+
+-- a , b , c
+  
+parseTest :: Parser String
+parseTest = do
+  tName <- parseTableName `catchError` handleParseError
+  return tName
+  where
+    handleParseError :: String -> Parser String
+    handleParseError err = throwE "Error"
+
+
 
 parseDelete :: Parser ParsedStatement
 parseDelete = do
@@ -220,16 +304,41 @@ parseDelete = do
   parseSpaces
   parseString' "FROM"
   table <- parseTableName
-  return $ DeleteStatement table [] 
+
+  conditions <- parseWhereConditions
+
+  parseString ";"
+  return $ DeleteStatement table conditions 
+
+parseUpdate :: Parser ParsedStatement
+parseUpdate = do
+  -- UPDATE
+  parseSpaces
+  parseString' "UPDATE"
+  parseSpaces
+  table <- parseTableName
+  parseSpaces
+  parseString' "SET"
+  parseSpaces
+  updates <- parseSeparated1 (parseTableName) (parseString' ",")
+  parseSpaces
+  conditions <- parseSeparated1 (parseTableName) (parseString' ",")
 
 
+  return $ UpdateStatement table updates conditions
+
+parseInsert :: Parser ParsedStatement
+parseInsert = do
+  -- INSERT
+
+  return $ InsertStatement [] [] []
 
 
 
 
 data ParsedStatement
   -- Condition = Condition(OR(int))
-  = SelectStatement [String] [TableName] [String] -- [Column] [Table] [Condition]
+  = SelectStatement [String] [TableName] [String] [(String, Bool)]-- [Column] [Table] [Condition]
   | DeleteStatement TableName [String] -- Table [Condition]
   | UpdateStatement TableName [String] [String] -- Table [column=newValue] [Condition]
   | InsertStatement TableName [String] [String] -- Table [Column] [Value]
