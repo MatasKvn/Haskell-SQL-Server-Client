@@ -58,6 +58,7 @@ library
     , free
     , mtl
     , parsec
+    , scotty
     , text
     , time
     , transformers
@@ -85,6 +86,7 @@ executable fp2023-client
     , mtl
     , parsec
     , repline
+    , scotty
     , terminal-size
     , text
     , time
@@ -113,6 +115,7 @@ executable fp2023-manipulate
     , mtl
     , parsec
     , repline
+    , scotty
     , terminal-size
     , text
     , time
@@ -140,6 +143,7 @@ executable fp2023-select-all
     , mtl
     , parsec
     , repline
+    , scotty
     , terminal-size
     , text
     , transformers
@@ -166,6 +170,7 @@ executable fp2023-select-more
     , mtl
     , parsec
     , repline
+    , scotty
     , terminal-size
     , text
     , transformers
@@ -193,6 +198,7 @@ executable fp2023-server
     , mtl
     , parsec
     , repline
+    , scotty
     , terminal-size
     , text
     , time
@@ -220,6 +226,7 @@ test-suite fp2023-test
     , hspec
     , mtl
     , parsec
+    , scotty
     , text
     , transformers
     , transformers-either
