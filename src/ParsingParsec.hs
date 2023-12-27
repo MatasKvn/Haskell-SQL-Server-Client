@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# OPTIONS_GHC -Wno-unused-do-bind #-}
 
 module ParsingParsec (
     ParsedStatement(..),
@@ -306,8 +307,10 @@ singleUpdateParser = do
 
 -- Parser for case insensitive string
 -- Match the lowercase or uppercase form of 'c'
+caseInsensitiveChar :: Char -> Parser Char
 caseInsensitiveChar c = char (toLower c) <|> char (toUpper c)
 -- Match the string 's', accepting either lowercase or uppercase form of each character 
+caseInsensitiveString :: String -> Parser String
 caseInsensitiveString s = try (mapM caseInsensitiveChar s) Text.Parsec.<?> "\"" ++ s ++ "\""
 
 -- ORDER BY

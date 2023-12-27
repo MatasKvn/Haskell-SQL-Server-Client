@@ -7,7 +7,7 @@ module Parsing () where
 
 import Control.Monad.State
 import Control.Monad.Trans.Either
-import Control.Applicative ((<|>), Alternative (empty))
+import Control.Applicative ((<|>))
 import Data.Char (toLower, toUpper)
 import Control.Monad.Error (MonadError(catchError))
 
@@ -207,7 +207,7 @@ sqlParser statement =
 
 parseSql :: Parser ParsedStatement
 parseSql = do 
-  a <- parseSelect <|> parseDelete <|> parseUpdate <|> parseInsert 
+  a <- parseSelect <|> parseDelete <|> parseUpdate -- <|> parseInsert 
   return a
 
 

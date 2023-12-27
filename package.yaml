@@ -30,6 +30,7 @@ dependencies:
   - either
   - mtl
   - transformers-either
+  - scotty
 
 default-extensions:
 - ImportQualifiedPost
@@ -118,6 +119,7 @@ executables:
     - text
     - bytestring
     - yaml
+    - scotty
 
   fp2023-client:
     main:                Client.hs
@@ -138,6 +140,7 @@ executables:
     - text
     - bytestring
     - yaml
+    - scotty
 
 tests:
   fp2023-test:
