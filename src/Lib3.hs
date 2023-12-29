@@ -13,6 +13,9 @@ module Lib3
     ParsedStatement (SelectStatement, DeleteStatement, UpdateStatement, InsertStatement, ShowCurrentTime),
     dataframeToJson,
     jsonToDataframe,
+    deleteFunction,
+    updateFunction,
+    insertFunction
   )
 where
 
@@ -367,6 +370,7 @@ columnToJson (Column name colType) = "{\"name\": " ++ show name ++ ", \"type\": 
 
 columnsToJsonStart :: [Column] -> String
 columnsToJsonStart (x:xs) = "[" ++ columnToJson x ++ columnsToJson xs ++ "]"
+columnsToJsonStart [] = "[]"
 
 columnsToJson :: [Column] -> String
 columnsToJson (x:xs) = ", " ++ columnToJson x ++ columnsToJson xs
@@ -375,6 +379,7 @@ columnsToJson [] = ""
 --ROW WRITING
 rowsToJsonStart :: [Row] -> String
 rowsToJsonStart (x:xs) = "[" ++ rowToJsonStart x ++ rowsToJson xs ++ "]"
+rowsToJsonStart [] = "[]"
 
 rowsToJson :: [Row] -> String
 rowsToJson (x:xs) = ", " ++ rowToJsonStart x ++ rowsToJson xs

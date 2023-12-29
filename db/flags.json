@@ -1,0 +1,1 @@
+{"columns": [{"name": "flag", "type": "StringType"}, {"name": "value", "type": "BoolType"}], "rows": [[{"StringValue": "a"}, {"BoolValue": true}], [{"StringValue": "b"}, {"BoolValue": true}], [{"StringValue": "b"}, {"NullValue": null}], [{"StringValue": "b"}, {"BoolValue": false}]]}
