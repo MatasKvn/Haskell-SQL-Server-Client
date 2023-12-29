@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
-
+module Main where
 import Network.Wreq
 import Control.Lens
 import Data.Yaml
@@ -27,24 +27,41 @@ instance ToJSON ParsedStatement where
 
 
 
-module Main where
+
 
 -- main :: IO ()
 -- main = putStrLn "Ran CLIENT"
 
 
 
+-- main :: IO ()
+-- main = do
+--   putStrLn "Enter SQL query:"
+--   query <- getLine
+--   case parseSql query of
+--     Left err -> putStrLn $ "Error: " ++ err
+--     Right parsedStatement -> do
+--       let yamlStatement = encode (toJSON parsedStatement)
+--       response <- post "http:" yamlStatement
+--       let yamlResponse = response ^. responseBody
+--       case decode yamlResponse of
+--         Nothing -> putStrLn "Error: Could not decode server response"
+--         Just dataframe -> putStrLn $ renderDataFrameAsTable 100 dataframe
+
 main :: IO ()
 main = do
-  putStrLn "Enter SQL query:"
+  putStrLn "Enter SQL query (or type 'quit' to exit):"
   query <- getLine
-  case parseSql query of
-    Left err -> putStrLn $ "Error: " ++ err
-    Right parsedStatement -> do
-      let yamlStatement = encode (toJSON parsedStatement)
-      response <- post "http:" yamlStatement
-      let yamlResponse = response ^. responseBody
-      case decode yamlResponse of
-        Nothing -> putStrLn "Error: Could not decode server response"
-        Just dataframe -> putStrLn $ renderDataFrameAsTable 100 dataframe
-
+  if query == "quit"
+    then putStrLn "Goodbye!"
+    else do
+      case parseSql query of
+        Left err -> putStrLn $ "Error: " ++ err
+        Right parsedStatement -> do
+          let yamlStatement = encode (toJSON parsedStatement)
+          response <- post "http:" yamlStatement
+          let yamlResponse = response ^. responseBody
+          case decode yamlResponse of
+            Nothing -> putStrLn "Error: Could not decode server response"
+            Just dataframe -> putStrLn $ renderDataFrameAsTable width dataframe
+      main
