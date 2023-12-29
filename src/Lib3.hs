@@ -15,7 +15,8 @@ module Lib3
     jsonToDataframe,
     deleteFunction,
     updateFunction,
-    insertFunction
+    insertFunction,
+    connectTables
   )
 where
 

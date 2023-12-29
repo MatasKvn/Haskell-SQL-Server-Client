@@ -1,0 +1,1 @@
+{"columns": [{"name": "emp", "type": "IntegerType"}, {"name": "pName", "type": "StringType"}], "rows": [[{"IntegerValue": 1}, {"StringValue": "haskell"}], [{"IntegerValue": 2}, {"StringValue": "psi"}]]}

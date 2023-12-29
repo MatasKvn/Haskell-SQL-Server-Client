@@ -8,13 +8,14 @@
 module Main where
 
 import Data.Yaml hiding (Value)
+import Data.List
 import Control.Concurrent
 import Control.Monad
 import InMemoryTables (TableName)
 import DataFrame
 import Lib1 (renderDataFrameAsTable)
 import Lib2 (mergeListOfDataFrames, mergeDataFrames, filterDataframe, columnListDF)
-import Lib3 (deleteFunction, updateFunction, insertFunction, jsonToDataframe, dataframeToJson)
+import Lib3 (deleteFunction, updateFunction, insertFunction, jsonToDataframe, dataframeToJson, connectTables)
 import Web.Scotty
 import Data.Text.Lazy.Encoding (decodeUtf8)
 import ParsingParsec
@@ -39,6 +40,7 @@ main = do
 
                 post "/" $ do
                     body <- body
+                    liftAndCatchIO $ putStrLn ("Recieved request: " ++ LBS.unpack body)
                     let idk = decodeEither' (BS.toStrict body) :: Either ParseException ParsedStatement
                     case idk of
                         Left err -> text $ "An error occured.\n" <> TL.pack (prettyPrintParseException err)
@@ -47,7 +49,7 @@ main = do
 
                             case res of
                                 Left err -> text $ TL.pack err
-                                Right dataFrame -> text $ TL.pack (renderDataFrameAsTable 1000 dataFrame)
+                                Right dataFrame -> text $ TL.pack (BS.unpack (encode dataFrame))
                                     
 
 -- run server & run
@@ -62,13 +64,15 @@ executeParsedStatement (SelectStatement columns tableNames conditions order) mva
         Left err -> return $ Left err
         Right tableList -> do
             let dFrames = map snd tableList
-            let dFrame = mergeListOfDataFrames dFrames
+            let dFrame = connectTables dFrames
             case filterDataframe dFrame conditions of
                 Just filteredDataframe -> do
                     let selectedColumns = columnListDF columns filteredDataframe
                     case selectedColumns of
-                        Right selectResult -> return $ Right selectResult
                         Left _ -> return $ Left "Some columns were incorrect"
+                        Right selectResult -> do
+                            let orderedDataFrame = orderBy selectResult order
+                            return $ Right orderedDataFrame
                 Nothing -> return $ Left "Incorrect condition"
 -- DELETE
 executeParsedStatement (DeleteStatement name conditions) mvar_tables = do
@@ -114,11 +118,7 @@ executeParsedStatement (CreateTable name columns) mvar_tables = do
     db <- createTable_mvar name columns mvar_tables
     case db of
         Left err -> return $ Left err
-        Right database -> do
-            newTable <- getTable_mvar name mvar_tables
-            case newTable of
-                Left err -> return $ Left err
-                Right newTable -> return $ Right (snd newTable)
+        Right database -> return $ Left "CREATE TABLE"
 -- DROP
 executeParsedStatement (DropTable name) mvar_tables = do
     db <- dropTable_mvar name mvar_tables
@@ -222,12 +222,12 @@ type Table = (TableName, DataFrame)
 thread_saveTables :: MVar [(TableName, DataFrame)] -> IO ()
 thread_saveTables mvar_tables = forever $ do -- forever $ do
     threadDelay 1000000 -- Save delay
-    putStrLn "Saving tables..."
+    --putStrLn "Saving tables..."
     tables <- takeMVar mvar_tables
     saveTablesToDB tables
     writeFileLines (dbDirectory++"TABLELIST.txt") (map fst tables)
     putMVar mvar_tables tables
-    putStrLn "Saved tables."
+    --putStrLn "Saved tables."
     where
         -- Function to write a list of strings to a file
         writeFileLines :: String -> [String] -> IO ()
@@ -390,3 +390,44 @@ saveMultipleJSONFiles (tName : tNames) (jsonContent : jsonContents) = do
 
 dbDirectory :: String
 dbDirectory = "db/"
+
+
+
+-- ORDER BY
+
+compareValue :: Value -> Value -> Ordering
+compareValue (IntegerValue a) (IntegerValue b) = compare a b
+compareValue (StringValue a) (StringValue b) = compare a b
+compareValue (BoolValue a) (BoolValue b) = compare a b
+compareValue _ _ = EQ
+
+orderBy :: DataFrame -> [(String, Bool)] -> DataFrame
+orderBy (DataFrame cols rows) order = DataFrame cols sortedRows
+  where
+    indices = map (\(name, _) -> findIndex (\(Column colName _) -> colName == name) cols) order
+    sortedRows = sortBy (multiColCompare indices order) rows
+
+multiColCompare :: [Maybe Int] -> [(String, Bool)] -> Row -> Row -> Ordering
+multiColCompare [] _ _ _ = EQ
+multiColCompare (Just i : is) ((_, asc) : os) row1 row2 = 
+  let order = if asc then id else flip
+  in case order compareValue (row1 !! i) (row2 !! i) of
+    EQ -> multiColCompare is os row1 row2
+    x -> x
+multiColCompare _ _ _ _ = EQ
+
+-- TEST DATA
+
+a = Column "a" IntegerType
+b = Column "b" IntegerType
+c = Column "c" StringType
+d = Column "d" BoolType
+
+row1 = [IntegerValue 5, IntegerValue 15, StringValue "ddddddddddd", BoolValue True]
+row2 = [IntegerValue 10, IntegerValue 20, StringValue "no", BoolValue False]
+row3 = [IntegerValue 5, IntegerValue 10, StringValue "yes", BoolValue True]
+row4 = [IntegerValue 10, IntegerValue 15, StringValue "maybe", BoolValue False]
+row5 = [IntegerValue 5, IntegerValue 20, StringValue "no", BoolValue True]
+
+testDataa :: DataFrame
+testDataa = DataFrame [a, b, c, d] [row1, row2, row3, row4, row5]

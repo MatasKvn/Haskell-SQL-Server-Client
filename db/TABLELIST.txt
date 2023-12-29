@@ -1,3 +1,5 @@
+testData
+projects
 employees
 flags
 invalid1

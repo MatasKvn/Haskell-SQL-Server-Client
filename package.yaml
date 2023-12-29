@@ -31,6 +31,8 @@ dependencies:
   - mtl
   - transformers-either
   - scotty
+  - wreq
+  - lens
 
 default-extensions:
 - ImportQualifiedPost
@@ -141,6 +143,7 @@ executables:
     - bytestring
     - yaml
     - scotty
+    - wreq
 
 tests:
   fp2023-test:
