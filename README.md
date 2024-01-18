@@ -12,16 +12,28 @@ Run Client using `fp2023-client`
 - Insert 
 - Update 
 
-### Available keywords
-  * `SELECT` desired columns
-  * `FROM` desired tables
-  * `WHERE` desired conditions (int only!)
-  * `ORDER BY` desired order
+### Available keywords & syntax
+  * `CREATE TABLE <table name>(<column1 name> <column type>, ...)`
+  * `DROP TABLE <table name>`
+  - `SELECT`
+    * `SELECT <column1, ...>` 
+    * `FROM <table1, ...>` 
+    * `WHERE <int condition>` (int only!), optional
+    * `ORDER BY <column> <ASC or DESC>` optional
+  - `DELETE`
+    * `DELETE FROM <table>` 
+    * `WHERE <int condition>` (int only!)
+  - `INSERT`
+    * `INSERT INTO <table>(column1, ...)`
+    * `VALUES (col1value, ...)`
+  - `UPDATE`
+    * `UPDATE <table>` 
+    * `SET <column1> = <newValue>, ...`
 <br></br>
 
 Dependencies can be found in package.yaml
 <br></br>
-Open any .hs file, Haskell extension should pick up
+If you use VSCode, open any .hs file, Haskell extension should pick up
 [project settings](.vscode/settings.json) and install all dependencies. This might take some
 time. If the magic does not happen, please install ghcup components manually:
 
