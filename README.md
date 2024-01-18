@@ -18,11 +18,11 @@ Run Client using `fp2023-client`
   - `SELECT`
     * `SELECT <column1, ...>` 
     * `FROM <table1, ...>` 
-    * `WHERE <int condition>` (int only!), optional
+    * `WHERE <int condition> OR ...` (int only!), optional
     * `ORDER BY <column> <ASC or DESC>` optional
   - `DELETE`
     * `DELETE FROM <table>` 
-    * `WHERE <int condition>` (int only!)
+    * `WHERE <int condition> OR ...` (int only!)
   - `INSERT`
     * `INSERT INTO <table>(column1, ...)`
     * `VALUES (col1value, ...)`
