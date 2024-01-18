@@ -1,35 +1,36 @@
-# fp-2023
-
-
-# Task 4
+# Haskell SQL Server & Client 
 
 Run server using `fp2023-server`
 
 Run Client using `fp2023-client`
+<br></br>
 
-Requirements:
- 1. CREATE & DROP table
- 2. ORDER BY (ASC, DESC) (or Primary & Foreign keys)
- 3. PARSING SQL (State + EitherT)
- 4. Thread for saving files
- 5. HTTP Server & HTTP Client
- 6. YAML serialization for DataFrames
+### Possibilities:
+- Create & Drop tables
+- Select
+- Delete
+- Insert 
+- Update 
 
-Client: 
-- Nuskaito statementus (String)
-- Siuncia Statementus (String) i sereri
-- Gauna is serverio DataFrame seriaziluota i YAML
-- Deseriaziluoja YAML i DataFrame
-- Atspausdina DataFrame su renderDataFrameAsTable
+### Available keywords
+  * `SELECT` desired columns
+  * `FROM` desired tables
+  * `WHERE` desired conditions (int only!)
+  * `ORDER BY` desired order
+<br></br>
 
-Server:
-- Laikyt DataFrame'us kaip failus
-- Paleidus uzloadint DataFrame is failu
-- Paleist thread'a kuris periodiskai issaugo uzloadintus DataFrame'us i failus
-- Klauso requestu is Client'u
-- Parsina gautus Query'us i ParsedStatement
-- Ivykdo ParsedStatement 
-- Siuncia Client'ui serializuota DataFrame (YAML)
+Dependencies can be found in package.yaml
+<br></br>
+Open any .hs file, Haskell extension should pick up
+[project settings](.vscode/settings.json) and install all dependencies. This might take some
+time. If the magic does not happen, please install ghcup components manually:
+
+```
+ghcup install stack --set 2.9.3
+ghcup install hls --set 2.0.0.1
+ghcup install cabal --set 3.6.2.0
+ghcup install ghc --set 9.4.5
+``````
 
 
 
