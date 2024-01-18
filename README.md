@@ -13,7 +13,7 @@ Run Client using `fp2023-client`
 - Update 
 
 ### Available keywords & syntax
-  * `CREATE TABLE <table name>(<column1 name> <column type>, ...)`
+  * `CREATE TABLE <table name>(<column1 name> <column type>, ...)` available column types: int, string, bool
   * `DROP TABLE <table name>`
   - `SELECT`
     * `SELECT <column1, ...>` 
